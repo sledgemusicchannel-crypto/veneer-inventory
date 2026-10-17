@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#123c2c">
+<title>VeneerTally Pro</title>
+
+<script src="https://unpkg.com/@zxing/library@0.19.1"></script>
+
+<style>
+*{box-sizing:border-box}
+body{font-family:Arial,sans-serif;background:#17232a;color:white;margin:0;padding:10px}
+h2{text-align:center;color:#eaf5ef}
+.dashboard{background:#dff4e7;color:#154360;padding:12px;border-radius:10px;text-align:center;margin-bottom:10px}
+.dashboard h1{font-size:30px;color:#147d46;margin:7px}
+.form-group{margin-bottom:8px}
+label{display:block;font-size:12px;color:#d5e0e4;margin-bottom:4px}
+input{width:100%;min-width:0;padding:10px;font-size:14px;border:1px solid #aebbc1;border-radius:6px;background:white;color:#17232a}
+.row{display:flex;gap:7px}
+.col{flex:1;min-width:0}
+button{width:100%;padding:13px 7px;font-size:14px;font-weight:bold;border:0;border-radius:6px;cursor:pointer;margin-top:5px}
+.btn-add{background:#238b57;color:white}
+.btn-scan{background:#7650b5;color:white}
+.btn-excel{background:#218c52;color:white}
+.btn-pdf{background:#d97725;color:white}
+.btn-del,.btn-row-del{background:#c0392b;color:white}
+.btn-row-edit{background:#c97816;color:white}
+.btn-action{width:auto;padding:7px;font-size:11px;margin:2px 0}
+.meta-box{background:#293c44;padding:10px;border-radius:8px;margin-bottom:10px}
+.alert{text-align:center;color:#ffcf70;font-weight:bold;font-size:12px;min-height:20px;margin:7px 0;overflow-wrap:anywhere}
+.table-wrap{width:100%;overflow-x:auto;margin-top:12px}
+table{width:100%;border-collapse:collapse;background:white;color:#17232a;font-size:11px}
+th,td{border:1px solid #d6dce0;padding:7px 5px;text-align:center;overflow-wrap:anywhere}
+th{background:#254b3b;color:white}
+tfoot tr{background:#dff4e7;font-weight:bold}
+small{color:#596970}
+#cameraPanel video{display:block}
+#exportModal{display:none;background:rgba(0,0,0,.94);position:fixed;inset:0;width:100%;height:100%;padding:24px 15px;overflow-y:auto;z-index:1000;text-align:center}
+.footer-note{text-align:center;color:#b9c7cb;font-size:11px;margin:12px}
+
+@media print{
+body{background:white;color:black;padding:0}
+.no-print{display:none!important}
+table{font-size:10px}
+th{background:#ddd!important;color:black!important}
+th,td{border:1px solid #888}
+}
+</style>
+</head>
+
+<body>
+
+<h2>🌿 VeneerTally Pro</h2>
+
+<div class="dashboard no-print">
+<div id="palletDisplay">Current Pallet: Pallet 01</div>
+<h1 id="totalM2">0.00 m²</h1>
+<div id="totalBundles">Total Bundles: 0</div>
+<div id="storageStatus" style="font-size:11px;margin-top:5px">Local storage enabled</div>
+</div>
+
+<div id="alertBox" class="alert" role="status"></div>
+
+<div class="meta-box no-print">
+<div class="row">
+<div class="col form-group">
+<label for="palletNum">Pallet Number</label>
+<input id="palletNum" value="Pallet 01" maxlength="60">
+</div>
+
+<div class="col form-group">
+<label for="companyName">Company / Supplier</label>
+<input id="companyName" placeholder="Supplier name" maxlength="100">
+</div>
+</div>
+
+<div class="form-group" style="margin-bottom:0">
+<label for="veneerSpecie">Veneer Species</label>
+<input id="veneerSpecie" placeholder="e.g. Mapa Burl / Oak" maxlength="100">
+</div>
+</div>
+
+<div class="no-print">
+<button class="btn-scan" id="startScanBtn" onclick="startCameraScanner()">
+📷 START LIVE BARCODE SCANNER
+</button>
+
+<button class="btn-del" id="stopScanBtn" onclick="stopCameraScanner()" style="display:none">
+✕ STOP CAMERA
+</button>
+
+<div id="cameraPanel" style="display:none;margin-top:8px;background:#07110d;padding:8px;border-radius:8px">
+<video id="cameraVideo" playsinline muted autoplay
+style="width:100%;max-height:340px;object-fit:contain;background:#000;border-radius:6px"></video>
+<div style="font-size:12px;text-align:center;color:#d5e0e4;margin-top:6px">
+Hold the barcode steady inside the camera view.
+</div>
+</div>
+
+<input type="file" id="cameraInput" accept="image/*" capture="environment"
+style="display:none" onchange="handleImageScan(event)">
+
+<button class="btn-scan" onclick="document.getElementById('cameraInput').click()">
+📸 TAKE PHOTO TO SCAN (BACKUP)
+</button>
+</div>
+
+<div class="row no-print" style="margin-top:8px">
+<div class="col form-group">
+<label for="barcode">Barcode / ID</label>
+<input id="barcode" placeholder="Scan or type barcode" maxlength="200" autocomplete="off">
+</div>
+
+<div class="form-group" style="width:100px">
+<label for="bundleNum">Bundle No.</label>
+<input id="bundleNum" placeholder="No." maxlength="60">
+</div>
+</div>
+
+<div class="row no-print">
+<div class="col form-group">
+<label for="length">Length (cm)</label>
+<input type="number" id="length" placeholder="Length" min="0.01" step="any">
+</div>
+
+<div class="col form-group">
+<label for="width">Width (cm)</label>
+<input type="number" id="width" placeholder="Width" min="0.01" step="any">
+</div>
+
+<div class="col form-group">
+<label for="sheets">Sheets</label>
+<input type="number" id="sheets" value="1" min="1" step="1">
+</div>
+</div>
+
+<button class="btn-add no-print" id="saveBtn" onclick="addBundle()">
+➕ Add Bundle to Tally
+</button>
+
+<div class="no-print" style="margin-top:10px">
+<input id="searchFilter" placeholder="🔍 Search barcode, pallet or supplier"
+oninput="renderTable()" style="background:#293c44;color:white;border-color:#53666e">
+</div>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr>
+<th>Pallet</th>
+<th>Species / Supplier</th>
+<th>Barcode / Bundle</th>
+<th>Len × Wid × Sheets</th>
+<th>m²</th>
+<th class="no-print">Actions</th>
+</tr>
+</thead>
+<tbody id="tallyBody"></tbody>
+<tfoot>
+<tr>
+<td colspan="4" style="text-align:right">GRAND TOTAL:</td>
+<td id="tableGrandTotal">0.00 m²</td>
+<td class="no-print"></td>
+</tr>
+</tfoot>
+</table>
+</div>
+
+<div class="row no-print" style="margin-top:10px">
+<div class="col"><button class="btn-del" onclick="deleteLast()">🗑️ Delete Last</button></div>
+<div class="col"><button class="btn-excel" onclick="exportExcel()">📊 Export Excel</button></div>
+<div class="col"><button class="btn-pdf" onclick="exportPDF()">📄 Print / PDF</button></div>
+</div>
+
+<div class="row no-print">
+<div class="col"><button class="btn-scan" onclick="newPallet()">＋ New Pallet</button></div>
+<div class="col"><button class="btn-del" onclick="clearAll()">Clear All Records</button></div>
+</div>
+
+<div id="exportModal" class="no-print">
+<h3>Excel Tally Report</h3>
+<p style="font-size:13px;color:#ddd">Download your veneer tally spreadsheet.</p>
+<button class="btn-excel" onclick="downloadExcelFile()">📥 DOWNLOAD EXCEL FILE</button>
+<button class="btn-del" onclick="document.getElementById('exportModal').style.display='none'">✕ Close</button>
+</div>
+
+<div class="footer-note no-print">
+VeneerTally Pro · Scan · Track · Manage
+</div>
+
+<script>
+"use strict";
+
+const STORAGE_KEY="veneerTallyPro_records_v5";
+const SETTINGS_KEY="veneerTallyPro_settings_v5";
+
+let items=[];
+let editingBarcode=null;
+
+function getValue(id){ return document.getElementById(id).value.trim(); }
+function setValue(id,value){ document.getElementById(id).value=value; }
+
+function showMessage(message,isError=false){
+const box=document.getElementById("alertBox");
+box.textContent=message;
+box.style.color=isError?"#ff7777":"#ffcf70";
+}
+
+function roundArea(value){ return Math.round((value+Number.EPSILON)*100)/100; }
+
+function calculateArea(length,width,sheets){
+return roundArea(length*width*sheets/10000);
+}
+
+let audioContext=null;
+function playBeep(error=false){
+try{
+const AudioCtx=window.AudioContext||window.webkitAudioContext;
+if(!AudioCtx){ if(navigator.vibrate) navigator.vibrate(error?[180,80,180]:120); return; }
+audioContext=audioContext||new AudioCtx();
+if(audioContext.state==="suspended"){ audioContext.resume(); }
+const osc=audioContext.createOscillator();
+const gain=audioContext.createGain();
+osc.type="sine";
+osc.frequency.value=error?330:1000;
+gain.gain.setValueAtTime(0.0001,audioContext.currentTime);
+gain.gain.exponentialRampToValueAtTime(0.35,audioContext.currentTime+0.02);
+gain.gain.exponentialRampToValueAtTime(0.0001,audioContext.currentTime+0.28);
+osc.connect(gain);
+gain.connect(audioContext.destination);
+osc.start();
+osc.stop(audioContext.currentTime+0.3);
+if(navigator.vibrate) navigator.vibrate(error?[180,80,180]:70);
+}catch(e){
+if(navigator.vibrate) navigator.vibrate(error?[180,80,180]:120);
+}
+}
+
+function parseVeneerBarcode(raw){
+const text=String(raw||"").trim();
+const norm=text.replace(/[,;]/g," ").replace(/\s+/g," ");
+const result={ length:null, width:null, sheets:null, bundle:null, source:"" };
+
+const lenMatch=norm.match(/(?:\bLEN(?:GTH)?\b)\s*[:= -]?\s*(\d+(?:\.\d+)?)/i);
+const widMatch=norm.match(/(?:\bWID(?:TH)?\b)\s*[:= -]?\s*(\d+(?:\.\d+)?)/i);
+const shtMatch=norm.match(/(?:\bSHTS?\b|\bSHEETS?\b)\s*[:= -]?\s*(\d+)/i);
+
+if(lenMatch&&widMatch&&shtMatch){
+result.length=Number(lenMatch[1]);
+result.width=Number(widMatch[1]);
+result.sheets=Number(shtMatch[1]);
+result.source="label text";
+const b=norm.match(/(?:\bBUNDLE\b|\bBND\b|\bID\b)\s*[:= -]?\s*([A-Z0-9_-]+)/i);
+if(b) result.bundle=b[1];
+return result;
+}
+
+const digits=text.replace(/\D/g,"");
+if(/^00000430\d{12}$/.test(digits)){
+const len=Number(digits.slice(8,10));
+const wid=Number(digits.slice(10,13));
+const sht=Number(digits.slice(13,16));
+if(len>0&&wid>0&&sht>0){
+result.length=len; result.width=wid; result.sheets=sht;
+result.bundle=digits.slice(16)||null;
+result.source="supplier format";
+}
+}
+return result;
+}
+
+function applyScannedBarcode(raw){
+const code=String(raw||"").trim();
+if(!code){ playBeep(true); showMessage("Empty barcode returned.",true); return; }
+setValue("barcode",code);
+const parsed=parseVeneerBarcode(code);
+if(parsed.length!==null){
+setValue("length",String(parsed.length));
+setValue("width",String(parsed.width));
+setValue("sheets",String(parsed.sheets));
+if(parsed.bundle) setValue("bundleNum",parsed.bundle);
+showMessage("Parsed: "+parsed.length+" × "+parsed.width+" × "+parsed.sheets);
+}else{
+showMessage("Barcode captured: "+code+". Please enter dimensions manually if needed.");
+}
+playBeep(false);
+document.getElementById("length").focus();
+}
+
+let zxingReader=null;
+let cameraControls=null;
+let cameraStream=null;
+let nativeDetector=null;
+let scanBusy=false;
+
+async function startCameraScanner(){
+const panel=document.getElementById("cameraPanel");
+const video=document.getElementById("cameraVideo");
+panel.style.display="block";
+document.getElementById("startScanBtn").style.display="none";
+document.getElementById("stopScanBtn").style.display="block";
+try{
+cameraStream=await navigator.mediaDevices.getUserMedia({ audio:false, video:{ facingMode:{ideal:"environment"} } });
+video.srcObject=cameraStream;
+await video.play();
+if("BarcodeDetector" in window){
+try{ nativeDetector=new BarcodeDetector(); }catch(e){ nativeDetector=new BarcodeDetector(); }
+scanNativeVideo();
+}else if(window.ZXing){
+zxingReader=new ZXing.BrowserMultiFormatReader();
+cameraControls=await zxingReader.decodeFromVideoElement(video,(result)=>{
+if(result&&!scanBusy){
+scanBusy=true;
+applyScannedBarcode(result.getText?result.getText():result.text);
+stopCameraScanner();
+}
+});
+}
+}catch(err){
+stopCameraScanner();
+showMessage("Camera error: permission or hardware restriction.",true);
+playBeep(true);
+}
+}
+
+async function scanNativeVideo(){
+const video=document.getElementById("cameraVideo");
+while(cameraStream&&nativeDetector){
+if(video.readyState>=2){
+try{
+const codes=await nativeDetector.detect(video);
+if(codes&&codes.length){
+applyScannedBarcode(codes[0].rawValue);
+stopCameraScanner();
+return;
+}
+}catch(e){}
+}
+await new Promise(resolve=>setTimeout(resolve,150));
+}
+}
+
+function stopCameraScanner(){
+try{ if(cameraControls&&cameraControls.stop) cameraControls.stop(); }catch(e){}
+cameraControls=null;
+try{ if(zxingReader&&zxingReader.reset) zxingReader.reset(); }catch(e){}
+zxingReader=null; nativeDetector=null;
+if(cameraStream){ cameraStream.getTracks().forEach(t=>t.stop()); cameraStream=null; }
+const panel=document.getElementById("cameraPanel");
+if(panel) panel.style.display="none";
+document.getElementById("startScanBtn").style.display="block";
+document.getElementById("stopScanBtn").style.display="none";
+scanBusy=false;
+}
+
+async function handleImageScan(event){
+const file=event.target.files&&event.target.files[0];
+if(!file) return;
+showMessage("Processing photo...");
+let found=null;
+try{
+const img=new Image();
+const imageURL=URL.createObjectURL(file);
+await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src=imageURL; });
+if("BarcodeDetector" in window){
+const detector=new BarcodeDetector();
+const results=await detector.detect(img);
+if(results&&results.length) found=results[0].rawValue;
+}
+URL.revokeObjectURL(imageURL);
+if(found) applyScannedBarcode(found);
+else showMessage("No barcode found in photo.",true);
+}catch(e){ showMessage("Failed processing photo.",true); }
+event.target.value="";
+}
+
+function saveData(){
+try{
+localStorage.setItem(STORAGE_KEY,JSON.stringify(items));
+localStorage.setItem(SETTINGS_KEY,JSON.stringify({ pallet:getValue("palletNum"), company:getValue("companyName"), specie:getValue("veneerSpecie") }));
+document.getElementById("storageStatus").textContent="Records saved locally";
+}catch(e){}
+}
+
+function loadData(){
+try{
+const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]");
+if(Array.isArray(saved)){
+items=saved.map(i=>({...i, area:calculateArea(Number(i.length),Number(i.width),Number(i.sheets))}));
+}
+const settings=JSON.parse(localStorage.getItem(SETTINGS_KEY)||"null");
+if(settings){
+setValue("palletNum",settings.pallet||"Pallet 01");
+setValue("companyName",settings.company||"");
+setValue("veneerSpecie",settings.specie||"");
+}
+}catch(e){ items=[]; }
+}
+
+function addBundle(){
+const pallet=getValue("palletNum")||"Pallet 01";
+const company=getValue("companyName")||"-";
+const specie=getValue("veneerSpecie")||"-";
+const code=getValue("barcode");
+const bundle=getValue("bundleNum")||"-";
+const len=Number(document.getElementById("length").value);
+const wid=Number(document.getElementById("width").value);
+const sheets=Number(document.getElementById("sheets").value);
+
+if(!code){ showMessage("Enter or scan a barcode.",true); return; }
+if(!Number.isFinite(len)||len<=0||!Number.isFinite(wid)||wid<=0||!Number.isInteger(sheets)||sheets<=0){
+showMessage("Enter valid dimensions.",true); return;
+}
+
+const item={ pallet, company, specie, barcode:code, bundle, length:len, width:wid, sheets, area:calculateArea(len,wid,sheets) };
+if(editingBarcode!==null) items=items.filter(i=>i.barcode!==editingBarcode);
+items.unshift(item);
+editingBarcode=null;
+resetSaveButton();
+clearBundleInputs();
+saveData();
+renderTable();
+updateTotals();
+playBeep(false);
+showMessage("Saved "+code);
+document.getElementById("barcode").focus();
+}
+
+function clearBundleInputs(){
+setValue("barcode",""); setValue("bundleNum",""); setValue("length",""); setValue("width",""); setValue("sheets","1");
+}
+
+function resetSaveButton(){
+const button=document.getElementById("saveBtn");
+button.textContent="➕ Add Bundle to Tally";
+button.style.background="#238b57";
+}
+
+function editItem(code){
+const item=items.find(i=>i.barcode===code);
+if(!item) return;
+setValue("palletNum",item.pallet);
+setValue("companyName",item.company);
+setValue("veneerSpecie",item.specie);
+setValue("barcode",item.barcode);
+setValue("bundleNum",item.bundle);
+setValue("length",item.length);
+setValue("width",item.width);
+setValue("sheets",item.sheets);
+editingBarcode=code;
+document.getElementById("saveBtn").textContent="💾 Update Bundle";
+document.getElementById("saveBtn").style.background="#c97816";
+}
+
+function deleteItem(code){
+if(!confirm("Delete barcode "+code+"?")) return;
+items=items.filter(i=>i.barcode!==code);
+saveData(); renderTable(); updateTotals();
+}
+
+function deleteLast(){
+if(!items.length) return;
+items.shift();
+saveData(); renderTable(); updateTotals();
+}
+
+function renderTable(){
+const body=document.getElementById("tallyBody");
+const query=getValue("searchFilter").toLowerCase();
+body.replaceChildren();
+const filtered=items.filter(i=>[i.pallet,i.company,i.specie,i.barcode,i.bundle].join(" ").toLowerCase().includes(query));
+
+filtered.forEach(item=>{
+const row=document.createElement("tr");
+[item.pallet, item.specie, item.barcode, item.length+"×"+item.width+"×"+item.sheets, item.area.toFixed(2)].forEach((val, idx)=>{
+const cell=document.createElement("td");
+cell.textContent=val;
+row.appendChild(cell);
+});
+const actions=document.createElement("td");
+const edit=document.createElement("button");
+edit.className="btn-action btn-row-edit"; edit.textContent="Edit"; edit.onclick=()=>editItem(item.barcode);
+const del=document.createElement("button");
+del.className="btn-action btn-row-del"; del.textContent="Del"; del.onclick=()=>deleteItem(item.barcode);
+actions.append(edit,del);
+row.appendChild(actions);
+body.appendChild(row);
+});
+}
+
+function updateTotals(){
+const total=items.reduce((sum,i)=>sum+i.area,0);
+document.getElementById("palletDisplay").textContent="Current Pallet: "+(getValue("palletNum")||"Pallet 01");
+document.getElementById("totalM2").textContent=total.toFixed(2)+" m²";
+document.getElementById("totalBundles").textContent="Total Bundles: "+items.length;
+document.getElementById("tableGrandTotal").textContent=total.toFixed(2)+" m²";
+}
+
+function newPallet(){
+const current=getValue("palletNum")||"Pallet 01";
+const match=current.match(/(\d+)\s*$/);
+const next=match?Number(match[1])+1:2;
+setValue("palletNum","Pallet "+String(next).padStart(2,"0"));
+updateTotals(); saveData();
+}
+
+function clearAll(){
+if(!confirm("Clear all records?")) return;
+items=[]; saveData(); renderTable(); updateTotals();
+}
+
+function exportExcel(){ document.getElementById("exportModal").style.display="block"; }
+
+function downloadExcelFile(){
+const headings=["Pallet","Company","Species","Barcode","Bundle","Length","Width","Sheets","Area (m2)"];
+let html='<table><thead><tr>';
+headings.forEach(h=>html+="<th>"+h+"</th>");
+html+="</tr></thead><tbody>";
+items.forEach(item=>{
+html+=`<tr><td>${item.pallet}</td><td>${item.company}</td><td>${item.specie}</td><td>${item.barcode}</td><td>${item.bundle}</td><td>${item.length}</td><td>${item.width}</td><td>${item.sheets}</td><td>${item.area.toFixed(2)}</td></tr>`;
+html+="</tbody></table>";
+});
+const base64Data=btoa(unescape(encodeURIComponent(html)));
+const link=document.createElement("a");
+link.href="data:application/vnd.ms-excel;base64,"+base64Data;
+link.download="VeneerTally.xls";
+link.click();
+document.getElementById("exportModal").style.display="none";
+}
+
+function exportPDF(){ window.print(); }
+
+loadData(); renderTable(); updateTotals();
+</script>
+</body>
+</html>
