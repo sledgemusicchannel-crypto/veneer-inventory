@@ -1,15 +1,21 @@
 {
   "name": "VeneerTally Pro",
   "short_name": "VeneerTally",
-  "start_url": "/veneer-inventory/",
+  "start_url": "/veneer-inventory/index.html",
   "scope": "/veneer-inventory/",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#17232a",
   "theme_color": "#123c2c",
   "description": "Professional veneer bundle barcode scanner and tally manager",
   "icons": [
     {
-      "src": "https://via.placeholder.com/512",
+      "src": "https://via.placeholder.com/192/123c2c/ffffff?text=VeneerTally",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://via.placeholder.com/512/123c2c/ffffff?text=VeneerTally",
       "sizes": "512x512",
       "type": "image/png"
     }
