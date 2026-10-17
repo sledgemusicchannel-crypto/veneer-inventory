@@ -1,7 +1,8 @@
 {
   "name": "VeneerTally Pro",
   "short_name": "VeneerTally",
-  "start_url": "./index.html",
+  "start_url": "/veneer-inventory/",
+  "scope": "/veneer-inventory/",
   "display": "standalone",
   "background_color": "#17232a",
   "theme_color": "#123c2c",
