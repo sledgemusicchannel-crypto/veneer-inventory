@@ -192,8 +192,8 @@ VeneerTally Pro · Scan · Track · Manage
 <script>
 "use strict";
 
-const STORAGE_KEY="veneerTallyPro_records_v5";
-const SETTINGS_KEY="veneerTallyPro_settings_v5";
+const STORAGE_KEY="veneerTallyPro_records_v6";
+const SETTINGS_KEY="veneerTallyPro_settings_v6";
 
 let items=[];
 let editingBarcode=null;
@@ -242,18 +242,32 @@ const text=String(raw||"").trim();
 const norm=text.replace(/[,;]/g," ").replace(/\s+/g," ");
 const result={ length:null, width:null, sheets:null, bundle:null, source:"" };
 
-const lenMatch=norm.match(/(?:\bLEN(?:GTH)?\b)\s*[:= -]?\s*(\d+(?:\.\d+)?)/i);
-const widMatch=norm.match(/(?:\bWID(?:TH)?\b)\s*[:= -]?\s*(\d+(?:\.\d+)?)/i);
-const shtMatch=norm.match(/(?:\bSHTS?\b|\bSHEETS?\b)\s*[:= -]?\s*(\d+)/i);
+/* Matching explicit text labels (e.g. 80 LEN 53 WIDE 13 SHT) */
+const lenMatch=norm.match(/(?:(\d+(?:\.\d+)?)\s*LEN|\bLEN(?:GTH)?\b\s*[:= -]?\s*(\d+(?:\.\d+)?))/i);
+const widMatch=norm.match(/(?:(\d+(?:\.\d+)?)\s*WIDE|\bWID(?:TH)?\b\s*[:= -]?\s*(\d+(?:\.\d+)?))/i);
+const shtMatch=norm.match(/(?:(\d+)\s*SHT|\bSHTS?\b|\bSHEETS?\b\s*[:= -]?\s*(\d+))/i);
 
-if(lenMatch&&widMatch&&shtMatch){
-result.length=Number(lenMatch[1]);
-result.width=Number(widMatch[1]);
-result.sheets=Number(shtMatch[1]);
+if((lenMatch&&lenMatch[1]||lenMatch&&lenMatch[2]) && (widMatch&&widMatch[1]||widMatch&&widMatch[2]) && (shtMatch&&shtMatch[1]||shtMatch&&shtMatch[2])){
+result.length=Number(lenMatch[1]||lenMatch[2]);
+result.width=Number(widMatch[1]||widMatch[2]);
+result.sheets=Number(shtMatch[1]||shtMatch[2]);
 result.source="label text";
 const b=norm.match(/(?:\bBUNDLE\b|\bBND\b|\bID\b)\s*[:= -]?\s*([A-Z0-9_-]+)/i);
 if(b) result.bundle=b[1];
 return result;
+}
+
+/* Matching numeric sequence labels (e.g. 090 17 32 or 220 27 42) */
+const seqMatch=norm.match(/\b(\d{2,3})\s+(\d{2,3})\s+(\d{1,3})\b/);
+if(seqMatch){
+const l=Number(seqMatch[1]);
+const w=Number(seqMatch[2]);
+const s=Number(seqMatch[3]);
+if(l>0 && w>0 && s>0){
+result.length=l; result.width=w; result.sheets=s;
+result.source="sequence format";
+return result;
+}
 }
 
 const digits=text.replace(/\D/g,"");
@@ -282,7 +296,7 @@ setValue("sheets",String(parsed.sheets));
 if(parsed.bundle) setValue("bundleNum",parsed.bundle);
 showMessage("Parsed: "+parsed.length+" × "+parsed.width+" × "+parsed.sheets);
 }else{
-showMessage("Barcode captured: "+code+". Please enter dimensions manually if needed.");
+showMessage("Barcode captured: "+code+". Enter dimensions manually if needed.");
 }
 playBeep(false);
 document.getElementById("length").focus();
@@ -512,21 +526,46 @@ items=[]; saveData(); renderTable(); updateTotals();
 
 function exportExcel(){ document.getElementById("exportModal").style.display="block"; }
 
+/* PERMISSION-FREE CSV BLOB EXPORT */
 function downloadExcelFile(){
-const headings=["Pallet","Company","Species","Barcode","Bundle","Length","Width","Sheets","Area (m2)"];
-let html='<table><thead><tr>';
-headings.forEach(h=>html+="<th>"+h+"</th>");
-html+="</tr></thead><tbody>";
+if(!items.length){
+alert("No items to export.");
+return;
+}
+
+const headings=["Pallet Number","Company/Supplier","Veneer Species","Barcode","Bundle No","Length (cm)","Width (cm)","Sheets","Area (m2)"];
+let csvRows=[];
+csvRows.push(headings.join(","));
+
 items.forEach(item=>{
-html+=`<tr><td>${item.pallet}</td><td>${item.company}</td><td>${item.specie}</td><td>${item.barcode}</td><td>${item.bundle}</td><td>${item.length}</td><td>${item.width}</td><td>${item.sheets}</td><td>${item.area.toFixed(2)}</td></tr>`;
-html+="</tbody></table>";
+const values=[
+`"${item.pallet}"`,
+`"${item.company}"`,
+`"${item.specie}"`,
+`"${item.barcode}"`,
+`"${item.bundle}"`,
+item.length,
+item.width,
+item.sheets,
+item.area.toFixed(2)
+];
+csvRows.push(values.join(","));
 });
-const base64Data=btoa(unescape(encodeURIComponent(html)));
+
+const total=items.reduce((sum,i)=>sum+i.area,0);
+csvRows.push(`"GRAND TOTAL","","","","","","","",${total.toFixed(2)}`);
+
+const blob=new Blob([csvRows.join("\n")],{type:"text/csv;charset=utf-8;"});
+const url=URL.createObjectURL(blob);
 const link=document.createElement("a");
-link.href="data:application/vnd.ms-excel;base64,"+base64Data;
-link.download="VeneerTally.xls";
+link.setAttribute("href",url);
+link.setAttribute("download","VeneerTally_Pro_"+new Date().toISOString().slice(0,10)+".csv");
+document.body.appendChild(link);
 link.click();
+document.body.removeChild(link);
+
 document.getElementById("exportModal").style.display="none";
+showMessage("Excel (CSV) report exported successfully.");
 }
 
 function exportPDF(){ window.print(); }
