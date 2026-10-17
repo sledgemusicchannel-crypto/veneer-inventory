@@ -93,8 +93,13 @@ th,td{border:1px solid #888}
 <div id="cameraPanel" style="display:none;margin-top:8px;background:#07110d;padding:8px;border-radius:8px">
 <video id="cameraVideo" playsinline muted autoplay
 style="width:100%;max-height:340px;object-fit:contain;background:#000;border-radius:6px"></video>
+
+<button class="btn-add" style="margin-top:8px;background:#147d46" onclick="manualCaptureFrame()">
+📸 CAPTURE & SCAN LABEL NOW
+</button>
+
 <div style="font-size:12px;text-align:center;color:#d5e0e4;margin-top:6px">
-Hold the barcode steady inside the camera view.
+Point camera at barcode and tap capture.
 </div>
 </div>
 
@@ -180,9 +185,10 @@ oninput="renderTable()" style="background:#293c44;color:white;border-color:#5366
 
 <div id="exportModal" class="no-print">
 <h3>Excel Tally Report</h3>
-<p style="font-size:13px;color:#ddd">Download your veneer tally spreadsheet.</p>
-<button class="btn-excel" onclick="downloadExcelFile()">📥 DOWNLOAD EXCEL FILE</button>
-<button class="btn-del" onclick="document.getElementById('exportModal').style.display='none'">✕ Close</button>
+<p style="font-size:13px;color:#ddd">Download or copy your veneer tally spreadsheet data.</p>
+<button class="btn-excel" onclick="downloadExcelFile()">📥 DOWNLOAD CSV FILE</button>
+<button class="btn-add" style="margin-top:8px" onclick="copyCSVToClipboard()">📋 COPY CSV TO CLIPBOARD</button>
+<button class="btn-del" style="margin-top:8px" onclick="document.getElementById('exportModal').style.display='none'">✕ Close</button>
 </div>
 
 <div class="footer-note no-print">
@@ -192,8 +198,8 @@ VeneerTally Pro · Scan · Track · Manage
 <script>
 "use strict";
 
-const STORAGE_KEY="veneerTallyPro_records_v6";
-const SETTINGS_KEY="veneerTallyPro_settings_v6";
+const STORAGE_KEY="veneerTallyPro_records_v7";
+const SETTINGS_KEY="veneerTallyPro_settings_v7";
 
 let items=[];
 let editingBarcode=null;
@@ -242,7 +248,6 @@ const text=String(raw||"").trim();
 const norm=text.replace(/[,;]/g," ").replace(/\s+/g," ");
 const result={ length:null, width:null, sheets:null, bundle:null, source:"" };
 
-/* Matching explicit text labels (e.g. 80 LEN 53 WIDE 13 SHT) */
 const lenMatch=norm.match(/(?:(\d+(?:\.\d+)?)\s*LEN|\bLEN(?:GTH)?\b\s*[:= -]?\s*(\d+(?:\.\d+)?))/i);
 const widMatch=norm.match(/(?:(\d+(?:\.\d+)?)\s*WIDE|\bWID(?:TH)?\b\s*[:= -]?\s*(\d+(?:\.\d+)?))/i);
 const shtMatch=norm.match(/(?:(\d+)\s*SHT|\bSHTS?\b|\bSHEETS?\b\s*[:= -]?\s*(\d+))/i);
@@ -257,7 +262,6 @@ if(b) result.bundle=b[1];
 return result;
 }
 
-/* Matching numeric sequence labels (e.g. 090 17 32 or 220 27 42) */
 const seqMatch=norm.match(/\b(\d{2,3})\s+(\d{2,3})\s+(\d{1,3})\b/);
 if(seqMatch){
 const l=Number(seqMatch[1]);
@@ -352,6 +356,51 @@ return;
 }catch(e){}
 }
 await new Promise(resolve=>setTimeout(resolve,150));
+}
+}
+
+/* MANUAL CAPTURE FRAME BUTTON */
+async function manualCaptureFrame(){
+const video=document.getElementById("cameraVideo");
+if(!video || video.readyState < 2){
+showMessage("Camera not ready yet.", true);
+return;
+}
+showMessage("Scanning captured frame...");
+try{
+const canvas=document.createElement("canvas");
+canvas.width=video.videoWidth || 1280;
+canvas.height=video.videoHeight || 720;
+const ctx=canvas.getContext("2d");
+ctx.drawImage(video,0,0,canvas.width,canvas.height);
+
+let found=null;
+if("BarcodeDetector" in window){
+try{
+const detector=new BarcodeDetector();
+const results=await detector.detect(canvas);
+if(results && results.length) found=results[0].rawValue;
+}catch(e){}
+}
+
+if(!found && window.ZXing && ZXing.BrowserMultiFormatReader){
+const reader=new ZXing.BrowserMultiFormatReader();
+try{
+const res=await reader.decodeFromImageUrl(canvas.toDataURL());
+if(res) found=res.getText ? res.getText() : res.text;
+}catch(e){}
+}
+
+if(found){
+applyScannedBarcode(found);
+stopCameraScanner();
+}else{
+playBeep(true);
+showMessage("No barcode detected in frame. Try holding steadier.", true);
+}
+}catch(err){
+playBeep(true);
+showMessage("Capture failed.", true);
 }
 }
 
@@ -526,17 +575,10 @@ items=[]; saveData(); renderTable(); updateTotals();
 
 function exportExcel(){ document.getElementById("exportModal").style.display="block"; }
 
-/* PERMISSION-FREE CSV BLOB EXPORT */
-function downloadExcelFile(){
-if(!items.length){
-alert("No items to export.");
-return;
-}
-
+/* GENERATE CSV CONTENT */
+function getCSVString(){
 const headings=["Pallet Number","Company/Supplier","Veneer Species","Barcode","Bundle No","Length (cm)","Width (cm)","Sheets","Area (m2)"];
-let csvRows=[];
-csvRows.push(headings.join(","));
-
+let csvRows=[headings.join(",")];
 items.forEach(item=>{
 const values=[
 `"${item.pallet}"`,
@@ -551,21 +593,51 @@ item.area.toFixed(2)
 ];
 csvRows.push(values.join(","));
 });
-
 const total=items.reduce((sum,i)=>sum+i.area,0);
 csvRows.push(`"GRAND TOTAL","","","","","","","",${total.toFixed(2)}`);
+return csvRows.join("\n");
+}
 
-const blob=new Blob([csvRows.join("\n")],{type:"text/csv;charset=utf-8;"});
-const url=URL.createObjectURL(blob);
+/* PERMISSION-FREE CSV DOWNLOAD USING DATA URI */
+function downloadExcelFile(){
+if(!items.length){
+alert("No items to export.");
+return;
+}
+const csvData=getCSVString();
+const encodedUri="data:text/csv;charset=utf-8,"+encodeURIComponent(csvData);
 const link=document.createElement("a");
-link.setAttribute("href",url);
+link.setAttribute("href",encodedUri);
 link.setAttribute("download","VeneerTally_Pro_"+new Date().toISOString().slice(0,10)+".csv");
 document.body.appendChild(link);
 link.click();
-document.body.removeChild(link);
-
+link.remove();
 document.getElementById("exportModal").style.display="none";
-showMessage("Excel (CSV) report exported successfully.");
+showMessage("CSV export triggered.");
+}
+
+/* COPY CSV TO CLIPBOARD AS BACKUP FOR RESTRICTED WEBVIEWS */
+async function copyCSVToClipboard(){
+if(!items.length){
+alert("No items to copy.");
+return;
+}
+const csvData=getCSVString();
+try{
+await navigator.clipboard.writeText(csvData);
+alert("CSV data copied to clipboard! You can now paste it directly into Excel or Google Sheets.");
+document.getElementById("exportModal").style.display="none";
+}catch(e){
+// Fallback text area method
+const textarea=document.createElement("textarea");
+textarea.value=csvData;
+document.body.appendChild(textarea);
+textarea.select();
+document.execCommand("copy");
+document.body.removeChild(textarea);
+alert("CSV data copied to clipboard!");
+document.getElementById("exportModal").style.display="none";
+}
 }
 
 function exportPDF(){ window.print(); }
