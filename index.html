@@ -185,8 +185,9 @@ oninput="renderTable()" style="background:#293c44;color:white;border-color:#5366
 
 <div id="exportModal" class="no-print">
 <h3>Excel Tally Report</h3>
-<p style="font-size:13px;color:#ddd">Download or copy your veneer tally spreadsheet data.</p>
-<button class="btn-excel" onclick="downloadExcelFile()">📥 DOWNLOAD CSV FILE</button>
+<p style="font-size:13px;color:#ddd">Choose your export option below:</p>
+<button class="btn-excel" onclick="downloadExcelXLS()">📊 DOWNLOAD EXCEL (.XLS)</button>
+<button class="btn-excel" style="margin-top:8px;background:#154360" onclick="downloadCSVFile()">📥 DOWNLOAD CSV FILE</button>
 <button class="btn-add" style="margin-top:8px" onclick="copyCSVToClipboard()">📋 COPY CSV TO CLIPBOARD</button>
 <button class="btn-del" style="margin-top:8px" onclick="document.getElementById('exportModal').style.display='none'">✕ Close</button>
 </div>
@@ -198,8 +199,8 @@ VeneerTally Pro · Scan · Track · Manage
 <script>
 "use strict";
 
-const STORAGE_KEY="veneerTallyPro_records_v7";
-const SETTINGS_KEY="veneerTallyPro_settings_v7";
+const STORAGE_KEY="veneerTallyPro_records_v8";
+const SETTINGS_KEY="veneerTallyPro_settings_v8";
 
 let items=[];
 let editingBarcode=null;
@@ -243,11 +244,23 @@ if(navigator.vibrate) navigator.vibrate(error?[180,80,180]:120);
 }
 }
 
+/* TIMBERPLUS & MULTI-SUPPLIER VENEER BARCODE PARSER */
 function parseVeneerBarcode(raw){
 const text=String(raw||"").trim();
 const norm=text.replace(/[,;]/g," ").replace(/\s+/g," ");
 const result={ length:null, width:null, sheets:null, bundle:null, source:"" };
 
+/* TIMBERPLUS / BSS Tag Pattern (e.g., L220W27S42 or L=220 W=27 S=42) */
+const timberMatch=norm.match(/L[:=]?\s*(\d+(?:\.\d+)?)\s*W[:=]?\s*(\d+(?:\.\d+)?)\s*S[:=]?\s*(\d+)/i);
+if(timberMatch){
+result.length=Number(timberMatch[1]);
+result.width=Number(timberMatch[2]);
+result.sheets=Number(timberMatch[3]);
+result.source="TIMBERplus Tag";
+return result;
+}
+
+/* Explicit text labels (e.g. 80 LEN 53 WIDE 13 SHT) */
 const lenMatch=norm.match(/(?:(\d+(?:\.\d+)?)\s*LEN|\bLEN(?:GTH)?\b\s*[:= -]?\s*(\d+(?:\.\d+)?))/i);
 const widMatch=norm.match(/(?:(\d+(?:\.\d+)?)\s*WIDE|\bWID(?:TH)?\b\s*[:= -]?\s*(\d+(?:\.\d+)?))/i);
 const shtMatch=norm.match(/(?:(\d+)\s*SHT|\bSHTS?\b|\bSHEETS?\b\s*[:= -]?\s*(\d+))/i);
@@ -262,6 +275,7 @@ if(b) result.bundle=b[1];
 return result;
 }
 
+/* Numeric sequence labels (e.g. 090 17 32 or 220 27 42) */
 const seqMatch=norm.match(/\b(\d{2,3})\s+(\d{2,3})\s+(\d{1,3})\b/);
 if(seqMatch){
 const l=Number(seqMatch[1]);
@@ -298,7 +312,7 @@ setValue("length",String(parsed.length));
 setValue("width",String(parsed.width));
 setValue("sheets",String(parsed.sheets));
 if(parsed.bundle) setValue("bundleNum",parsed.bundle);
-showMessage("Parsed: "+parsed.length+" × "+parsed.width+" × "+parsed.sheets);
+showMessage("Parsed ("+parsed.source+"): "+parsed.length+" × "+parsed.width+" × "+parsed.sheets);
 }else{
 showMessage("Barcode captured: "+code+". Enter dimensions manually if needed.");
 }
@@ -359,7 +373,6 @@ await new Promise(resolve=>setTimeout(resolve,150));
 }
 }
 
-/* MANUAL CAPTURE FRAME BUTTON */
 async function manualCaptureFrame(){
 const video=document.getElementById("cameraVideo");
 if(!video || video.readyState < 2){
@@ -575,60 +588,65 @@ items=[]; saveData(); renderTable(); updateTotals();
 
 function exportExcel(){ document.getElementById("exportModal").style.display="block"; }
 
-/* GENERATE CSV CONTENT */
+/* DIRECT EXCEL (.XLS) ENCODED HTML TABLE DOWNLOAD */
+function downloadExcelXLS(){
+if(!items.length){ alert("No items to export."); return; }
+
+let html='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
+html+='<head><meta charset="utf-8"></head><body><table><thead><tr>';
+html+='<th>Pallet Number</th><th>Company/Supplier</th><th>Veneer Species</th><th>Barcode</th><th>Bundle No</th><th>Length (cm)</th><th>Width (cm)</th><th>Sheets</th><th>Area (m2)</th>';
+html+='</tr></thead><tbody>';
+
+items.forEach(item=>{
+html+=`<tr><td>${item.pallet}</td><td>${item.company}</td><td>${item.specie}</td><td>'${item.barcode}</td><td>${item.bundle}</td><td>${item.length}</td><td>${item.width}</td><td>${item.sheets}</td><td>${item.area.toFixed(2)}</td></tr>`;
+});
+
+const total=items.reduce((sum,i)=>sum+i.area,0);
+html+=`<tr><td colspan="8"><b>GRAND TOTAL (m2)</b></td><td><b>${total.toFixed(2)}</b></td></tr></tbody></table></body></html>`;
+
+const link=document.createElement("a");
+link.href="data:application/vnd.ms-excel;charset=utf-8,"+encodeURIComponent(html);
+link.download="VeneerTally_Report_"+new Date().toISOString().slice(0,10)+".xls";
+document.body.appendChild(link);
+link.click();
+link.remove();
+document.getElementById("exportModal").style.display="none";
+showMessage("Excel (.xls) file downloaded.");
+}
+
+/* CSV DOWNLOAD */
 function getCSVString(){
 const headings=["Pallet Number","Company/Supplier","Veneer Species","Barcode","Bundle No","Length (cm)","Width (cm)","Sheets","Area (m2)"];
 let csvRows=[headings.join(",")];
 items.forEach(item=>{
-const values=[
-`"${item.pallet}"`,
-`"${item.company}"`,
-`"${item.specie}"`,
-`"${item.barcode}"`,
-`"${item.bundle}"`,
-item.length,
-item.width,
-item.sheets,
-item.area.toFixed(2)
-];
-csvRows.push(values.join(","));
+csvRows.push([`"${item.pallet}"`,`"${item.company}"`,`"${item.specie}"`,`"${item.barcode}"`,`"${item.bundle}"`,item.length,item.width,item.sheets,item.area.toFixed(2)].join(","));
 });
 const total=items.reduce((sum,i)=>sum+i.area,0);
 csvRows.push(`"GRAND TOTAL","","","","","","","",${total.toFixed(2)}`);
 return csvRows.join("\n");
 }
 
-/* PERMISSION-FREE CSV DOWNLOAD USING DATA URI */
-function downloadExcelFile(){
-if(!items.length){
-alert("No items to export.");
-return;
-}
+function downloadCSVFile(){
+if(!items.length){ alert("No items to export."); return; }
 const csvData=getCSVString();
-const encodedUri="data:text/csv;charset=utf-8,"+encodeURIComponent(csvData);
 const link=document.createElement("a");
-link.setAttribute("href",encodedUri);
-link.setAttribute("download","VeneerTally_Pro_"+new Date().toISOString().slice(0,10)+".csv");
+link.href="data:text/csv;charset=utf-8,"+encodeURIComponent(csvData);
+link.download="VeneerTally_Report_"+new Date().toISOString().slice(0,10)+".csv";
 document.body.appendChild(link);
 link.click();
 link.remove();
 document.getElementById("exportModal").style.display="none";
-showMessage("CSV export triggered.");
+showMessage("CSV file downloaded.");
 }
 
-/* COPY CSV TO CLIPBOARD AS BACKUP FOR RESTRICTED WEBVIEWS */
 async function copyCSVToClipboard(){
-if(!items.length){
-alert("No items to copy.");
-return;
-}
+if(!items.length){ alert("No items to copy."); return; }
 const csvData=getCSVString();
 try{
 await navigator.clipboard.writeText(csvData);
-alert("CSV data copied to clipboard! You can now paste it directly into Excel or Google Sheets.");
+alert("CSV data copied! You can paste directly into Excel or Google Sheets.");
 document.getElementById("exportModal").style.display="none";
 }catch(e){
-// Fallback text area method
 const textarea=document.createElement("textarea");
 textarea.value=csvData;
 document.body.appendChild(textarea);
