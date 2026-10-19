@@ -636,18 +636,18 @@ html+=`<tr><td colspan="8"><b>GRAND TOTAL (m2)</b></td><td><b>${total.toFixed(2)
 return html;
 }
 
-/* NATIVE ANDROID WEBVIEW FILE SHARE & SAVE ENGINE */
+/* FIXED NATIVE ANDROID FILE DOWNLOAD & SHARE ENGINE */
 async function shareOrSaveFile(format){
 if(!items.length){ alert("No items to export."); return; }
 const fileName = "VeneerTally_Report_" + new Date().toISOString().slice(0,10) + (format==='excel' ? '.xls' : '.csv');
 const content = format === 'excel' ? getXLSString() : getCSVString();
 const mimeType = format === 'excel' ? 'application/vnd.ms-excel' : 'text/csv';
 
-const file = new File([content], fileName, { type: mimeType });
-
-/* Attempt Native Web Share API (Works in Android WebViews) */
-if(navigator.canShare && navigator.canShare({ files: [file] })){
+/* 1. First Attempt: Native Web Share API */
+if(navigator.canShare){
 try{
+const file = new File([content], fileName, { type: mimeType });
+if(navigator.canShare({ files: [file] })){
 await navigator.share({
 files: [file],
 title: 'VeneerTally Report',
@@ -656,17 +656,33 @@ text: 'Exported Veneer Tally Stockplate Spreadsheet'
 document.getElementById("exportModal").style.display="none";
 showMessage("File shared / saved successfully.");
 return;
+}
 }catch(e){}
 }
 
-/* Fallback Data Window for WebView Download Restrictions */
-const encodedUri = "data:" + mimeType + ";charset=utf-8," + encodeURIComponent(content);
-const win = window.open(encodedUri, '_blank');
-if(!win){
-copyCSVToClipboard();
-}else{
+/* 2. Direct Download Fallback for Android WebView */
+try{
+const blob = new Blob([content], { type: mimeType });
+const blobUrl = URL.createObjectURL(blob);
+const link = document.createElement("a");
+link.href = blobUrl;
+link.download = fileName;
+document.body.appendChild(link);
+link.click();
+document.body.removeChild(link);
+setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
 document.getElementById("exportModal").style.display="none";
-showMessage("File opened in browser viewer.");
+showMessage("File download initiated.");
+}catch(e){
+/* 3. Direct Data-URI Anchor Fallback */
+const link = document.createElement("a");
+link.href = "data:" + mimeType + ";charset=utf-8," + encodeURIComponent(content);
+link.download = fileName;
+document.body.appendChild(link);
+link.click();
+document.body.removeChild(link);
+document.getElementById("exportModal").style.display="none";
+showMessage("Data-URI download initiated.");
 }
 }
 
