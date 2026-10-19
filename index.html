@@ -36,7 +36,7 @@ th{background:#254b3b;color:white}
 tfoot tr{background:#dff4e7;font-weight:bold}
 small{color:#596970}
 #cameraPanel video{display:block}
-#exportModal{display:none;background:rgba(0,0,0,.94);position:fixed;inset:0;width:100%;height:100%;padding:24px 15px;overflow-y:auto;z-index:1000;text-align:center}
+#exportModal{display:none;background:rgba(0,0,0,.95);position:fixed;inset:0;width:100%;height:100%;padding:20px 15px;overflow-y:auto;z-index:1000;text-align:center}
 .footer-note{text-align:center;color:#b9c7cb;font-size:11px;margin:12px}
 
 @media print{
@@ -174,8 +174,8 @@ oninput="renderTable()" style="background:#293c44;color:white;border-color:#5366
 
 <div class="row no-print" style="margin-top:10px">
 <div class="col"><button class="btn-del" onclick="deleteLast()">🗑️ Delete Last</button></div>
-<div class="col"><button class="btn-excel" onclick="exportExcel()">📊 Export File</button></div>
-<div class="col"><button class="btn-pdf" onclick="exportPDF()">📄 Print / PDF</button></div>
+<div class="col"><button class="btn-excel" onclick="exportExcel()">📊 Export Data</button></div>
+<div class="col"><button class="btn-pdf" onclick="exportPDF()">📄 Report Summary</button></div>
 </div>
 
 <div class="row no-print">
@@ -184,27 +184,21 @@ oninput="renderTable()" style="background:#293c44;color:white;border-color:#5366
 </div>
 
 <div id="exportModal" class="no-print">
-<h3>Export Options</h3>
-<p style="font-size:12px;color:#ddd">Select your preferred export method:</p>
+<h3 id="modalTitle" style="color:#81c784;margin-bottom:5px">Export Tally Report</h3>
+<p style="font-size:12px;color:#ddd;margin-top:0">Ready for Excel, Google Sheets, or Sharing:</p>
 
-<button class="btn-excel" style="margin-top:6px;background:#218c52" onclick="downloadExcelDirect()">
-📥 SAVE / DOWNLOAD EXCEL (.XLS)
+<textarea id="csvPreview" readonly style="width:100%;height:160px;background:#17232a;color:#81c784;font-family:monospace;font-size:11px;padding:8px;border:1px solid #53666e;border-radius:6px;margin-bottom:8px"></textarea>
+
+<button class="btn-add" style="margin-top:4px;background:#218c52" onclick="copyCSVToClipboard()">
+📋 COPY FORMATTED DATA TO CLIPBOARD
 </button>
 
-<button class="btn-excel" style="margin-top:8px;background:#154360" onclick="downloadCSVDirect()">
-📥 SAVE / DOWNLOAD CSV FILE (.CSV)
-</button>
-
-<button class="btn-add" style="margin-top:8px" onclick="copyCSVToClipboard()">
-📋 COPY CSV TO CLIPBOARD
-</button>
-
-<button class="btn-pdf" style="margin-top:8px" onclick="exportPDF()">
-📄 GENERATE PRINT / PDF REPORT
+<button class="btn-scan" style="margin-top:8px;background:#154360" onclick="shareReportText()">
+📲 SHARE REPORT (WhatsApp / Email / Drive)
 </button>
 
 <button class="btn-del" style="margin-top:12px" onclick="document.getElementById('exportModal').style.display='none'">
-✕ Close
+✕ Close Window
 </button>
 </div>
 
@@ -610,95 +604,74 @@ if(!confirm("Clear all records?")) return;
 items=[]; saveData(); renderTable(); updateTotals();
 }
 
-function exportExcel(){
-if(!items.length){ alert("No items to export."); return; }
-document.getElementById("exportModal").style.display="block";
-}
-
 function getCSVString(){
 const headings=["Pallet Number","Company/Supplier","Veneer Species","Barcode","Bundle No","Length (cm)","Width (cm)","Sheets","Area (m2)"];
-let csvRows=["\uFEFF" + headings.join(",")];
+let csvRows=[headings.join(",")];
 items.forEach(item=>{
 csvRows.push([`"${item.pallet}"`,`"${item.company}"`,`"${item.specie}"`,`"${item.barcode}"`,`"${item.bundle}"`,item.length,item.width,item.sheets,item.area.toFixed(2)].join(","));
 });
 const total=items.reduce((sum,i)=>sum+i.area,0);
 csvRows.push(`"GRAND TOTAL","","","","","","","",${total.toFixed(2)}`);
-return csvRows.join("\r\n");
+return csvRows.join("\n");
 }
 
-function getXLSString(){
-let html='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
-html+='<head><meta charset="utf-8"></head><body><table border="1"><thead><tr style="background:#254b3b;color:white">';
-html+='<th>Pallet Number</th><th>Company/Supplier</th><th>Veneer Species</th><th>Barcode</th><th>Bundle No</th><th>Length (cm)</th><th>Width (cm)</th><th>Sheets</th><th>Area (m2)</th>';
-html+='</tr></thead><tbody>';
-items.forEach(item=>{
-html+=`<tr><td>${item.pallet}</td><td>${item.company}</td><td>${item.specie}</td><td>'${item.barcode}</td><td>${item.bundle}</td><td>${item.length}</td><td>${item.width}</td><td>${item.sheets}</td><td>${item.area.toFixed(2)}</td></tr>`;
+function exportExcel(){
+if(!items.length){ alert("No items to export."); return; }
+document.getElementById("modalTitle").textContent = "📊 Export Excel / Spreadsheet Data";
+document.getElementById("csvPreview").value = getCSVString();
+document.getElementById("exportModal").style.display="block";
+}
+
+function exportPDF(){
+if(!items.length){ alert("No items to export."); return; }
+let summary = "=== VENEERTALLY PRO REPORT ===\n";
+summary += "Date: " + new Date().toISOString().slice(0,10) + "\n";
+summary += "Pallet: " + (getValue("palletNum") || "Pallet 01") + "\n";
+summary += "Supplier: " + (getValue("companyName") || "-") + "\n";
+summary += "Species: " + (getValue("veneerSpecie") || "-") + "\n";
+summary += "----------------------------------------\n\n";
+items.forEach((i, idx)=>{
+summary += `#${idx+1} | Pallet: ${i.pallet} | Barcode: ${i.barcode} | ${i.length}x${i.width}cm (${i.sheets} sht) -> ${i.area.toFixed(2)} m²\n`;
 });
-const total=items.reduce((sum,i)=>sum+i.area,0);
-html+=`<tr style="background:#dff4e7;font-weight:bold"><td colspan="8" align="right"><b>GRAND TOTAL (m2)</b></td><td><b>${total.toFixed(2)}</b></td></tr></tbody></table></body></html>`;
-return html;
+const total = items.reduce((sum,i)=>sum+i.area,0);
+summary += "\n----------------------------------------\n";
+summary += `GRAND TOTAL: ${total.toFixed(2)} m² (${items.length} Bundles)\n`;
+
+document.getElementById("modalTitle").textContent = "📄 Printable Report Summary";
+document.getElementById("csvPreview").value = summary;
+document.getElementById("exportModal").style.display="block";
 }
 
-/* NATIVE DIRECT DOWNLOAD FOR EXCEL */
-function downloadExcelDirect(){
-if(!items.length){ alert("No items to export."); return; }
-const fileName = "VeneerTally_Report_" + new Date().toISOString().slice(0,10) + ".xls";
-const content = getXLSString();
-const blob = new Blob([content], { type: "application/vnd.ms-excel;charset=utf-8" });
-const url = URL.createObjectURL(blob);
-const a = document.createElement("a");
-a.style.display = "none";
-a.href = url;
-a.download = fileName;
-document.body.appendChild(a);
-a.click();
-setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
-document.getElementById("exportModal").style.display="none";
-showMessage("Excel download triggered.");
-}
-
-/* NATIVE DIRECT DOWNLOAD FOR CSV */
-function downloadCSVDirect(){
-if(!items.length){ alert("No items to export."); return; }
-const fileName = "VeneerTally_Report_" + new Date().toISOString().slice(0,10) + ".csv";
-const content = getCSVString();
-const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
-const url = URL.createObjectURL(blob);
-const a = document.createElement("a");
-a.style.display = "none";
-a.href = url;
-a.download = fileName;
-document.body.appendChild(a);
-a.click();
-setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
-document.getElementById("exportModal").style.display="none";
-showMessage("CSV download triggered.");
-}
-
-function copyCSVToClipboard(){
+async function copyCSVToClipboard(){
 if(!items.length){ alert("No items to copy."); return; }
-const csvData = getCSVString();
+const textData = document.getElementById("csvPreview").value;
 try{
-navigator.clipboard.writeText(csvData);
-alert("CSV data copied to clipboard!");
+await navigator.clipboard.writeText(textData);
+alert("Data copied to clipboard! You can now paste directly into Excel, Google Sheets, or Word.");
 document.getElementById("exportModal").style.display="none";
 }catch(e){
-const textarea = document.createElement("textarea");
-textarea.value = csvData;
-document.body.appendChild(textarea);
+const textarea = document.getElementById("csvPreview");
 textarea.select();
 document.execCommand("copy");
-document.body.removeChild(textarea);
-alert("CSV data copied to clipboard!");
+alert("Data copied to clipboard!");
 document.getElementById("exportModal").style.display="none";
 }
 }
 
-/* RELIABLE ANDROID PRINT & PDF GENERATION */
-function exportPDF(){
-if(!items.length){ alert("No items to print."); return; }
+async function shareReportText(){
+if(!items.length){ alert("No items to share."); return; }
+const textData = document.getElementById("csvPreview").value;
+if(navigator.share){
+try{
+await navigator.share({
+title: 'VeneerTally Report',
+text: textData
+});
 document.getElementById("exportModal").style.display="none";
-setTimeout(()=>{ window.print(); }, 300);
+return;
+}catch(e){}
+}
+copyCSVToClipboard();
 }
 
 loadData(); renderTable(); updateTotals();
