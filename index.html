@@ -174,7 +174,7 @@ oninput="renderTable()" style="background:#293c44;color:white;border-color:#5366
 
 <div class="row no-print" style="margin-top:10px">
 <div class="col"><button class="btn-del" onclick="deleteLast()">🗑️ Delete Last</button></div>
-<div class="col"><button class="btn-excel" onclick="exportExcel()">📊 Export Excel Data</button></div>
+<div class="col"><button class="btn-excel" onclick="exportExcel()">📊 Export File</button></div>
 <div class="col"><button class="btn-pdf" onclick="exportPDF()">📄 Print / PDF</button></div>
 </div>
 
@@ -184,17 +184,23 @@ oninput="renderTable()" style="background:#293c44;color:white;border-color:#5366
 </div>
 
 <div id="exportModal" class="no-print">
-<h3>Excel Tally Export</h3>
-<p style="font-size:12px;color:#ddd">Data formatted for Excel & Google Sheets:</p>
+<h3>Export Options</h3>
+<p style="font-size:12px;color:#ddd">Select your preferred export method:</p>
 
-<textarea id="csvPreview" readonly style="width:100%;height:180px;background:#17232a;color:#81c784;font-family:monospace;font-size:11px;padding:8px;border:1px solid #53666e;border-radius:6px;margin-bottom:10px"></textarea>
+<button class="btn-excel" style="margin-top:6px;background:#218c52" onclick="downloadExcelDirect()">
+📥 SAVE / DOWNLOAD EXCEL (.XLS)
+</button>
 
-<button class="btn-add" style="margin-top:4px;background:#238b57" onclick="copyCSVToClipboard()">
-📋 COPY ALL CSV DATA
+<button class="btn-excel" style="margin-top:8px;background:#154360" onclick="downloadCSVDirect()">
+📥 SAVE / DOWNLOAD CSV FILE (.CSV)
+</button>
+
+<button class="btn-add" style="margin-top:8px" onclick="copyCSVToClipboard()">
+📋 COPY CSV TO CLIPBOARD
 </button>
 
 <button class="btn-pdf" style="margin-top:8px" onclick="exportPDF()">
-📄 PRINT / SAVE AS PDF
+📄 GENERATE PRINT / PDF REPORT
 </button>
 
 <button class="btn-del" style="margin-top:12px" onclick="document.getElementById('exportModal').style.display='none'">
@@ -260,7 +266,6 @@ const text=String(raw||"").trim();
 const norm=text.replace(/[,;]/g," ").replace(/\s+/g," ");
 const result={ length:null, width:null, sheets:null, bundle:null, source:"" };
 
-/* BSS / TIMBERplus Embedded Barcode Pattern 1: (e.g. 000022Z0800530130605 -> Len 80, Wid 53, Sht 13) */
 const bssMatch=text.match(/\d{6}[A-Z0-9]{2}(\d{3})(\d{3})(\d{3})/i);
 if(bssMatch){
 const l=Number(bssMatch[1]);
@@ -273,7 +278,6 @@ return result;
 }
 }
 
-/* Explicit text labels (e.g., 80 LEN 53 WIDE 13 SHT) */
 const lenMatch=norm.match(/(?:(\d+(?:\.\d+)?)\s*LEN|\bLEN(?:GTH)?\b\s*[:= -]?\s*(\d+(?:\.\d+)?))/i);
 const widMatch=norm.match(/(?:(\d+(?:\.\d+)?)\s*WIDE|\bWID(?:TH)?\b\s*[:= -]?\s*(\d+(?:\.\d+)?))/i);
 const shtMatch=norm.match(/(?:(\d+)\s*SHT|\bSHTS?\b|\bSHEETS?\b\s*[:= -]?\s*(\d+))/i);
@@ -288,7 +292,6 @@ if(b) result.bundle=b[1];
 return result;
 }
 
-/* Three numeric sequence pattern (e.g., 090 17 32 or 220 27 42) */
 const seqMatch=norm.match(/\b(\d{2,3})\s+(\d{2,3})\s+(\d{1,3})\b/);
 if(seqMatch){
 const l=Number(seqMatch[1]);
@@ -301,7 +304,6 @@ return result;
 }
 }
 
-/* Supplier 00000430 pattern */
 const digits=text.replace(/\D/g,"");
 if(/^00000430\d{12}$/.test(digits)){
 const len=Number(digits.slice(8,10));
@@ -608,44 +610,96 @@ if(!confirm("Clear all records?")) return;
 items=[]; saveData(); renderTable(); updateTotals();
 }
 
+function exportExcel(){
+if(!items.length){ alert("No items to export."); return; }
+document.getElementById("exportModal").style.display="block";
+}
+
 function getCSVString(){
 const headings=["Pallet Number","Company/Supplier","Veneer Species","Barcode","Bundle No","Length (cm)","Width (cm)","Sheets","Area (m2)"];
-let csvRows=[headings.join(",")];
+let csvRows=["\uFEFF" + headings.join(",")];
 items.forEach(item=>{
 csvRows.push([`"${item.pallet}"`,`"${item.company}"`,`"${item.specie}"`,`"${item.barcode}"`,`"${item.bundle}"`,item.length,item.width,item.sheets,item.area.toFixed(2)].join(","));
 });
 const total=items.reduce((sum,i)=>sum+i.area,0);
 csvRows.push(`"GRAND TOTAL","","","","","","","",${total.toFixed(2)}`);
-return csvRows.join("\n");
+return csvRows.join("\r\n");
 }
 
-function exportExcel(){
+function getXLSString(){
+let html='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
+html+='<head><meta charset="utf-8"></head><body><table border="1"><thead><tr style="background:#254b3b;color:white">';
+html+='<th>Pallet Number</th><th>Company/Supplier</th><th>Veneer Species</th><th>Barcode</th><th>Bundle No</th><th>Length (cm)</th><th>Width (cm)</th><th>Sheets</th><th>Area (m2)</th>';
+html+='</tr></thead><tbody>';
+items.forEach(item=>{
+html+=`<tr><td>${item.pallet}</td><td>${item.company}</td><td>${item.specie}</td><td>'${item.barcode}</td><td>${item.bundle}</td><td>${item.length}</td><td>${item.width}</td><td>${item.sheets}</td><td>${item.area.toFixed(2)}</td></tr>`;
+});
+const total=items.reduce((sum,i)=>sum+i.area,0);
+html+=`<tr style="background:#dff4e7;font-weight:bold"><td colspan="8" align="right"><b>GRAND TOTAL (m2)</b></td><td><b>${total.toFixed(2)}</b></td></tr></tbody></table></body></html>`;
+return html;
+}
+
+/* NATIVE DIRECT DOWNLOAD FOR EXCEL */
+function downloadExcelDirect(){
 if(!items.length){ alert("No items to export."); return; }
-const csvData = getCSVString();
-document.getElementById("csvPreview").value = csvData;
-document.getElementById("exportModal").style.display="block";
-// Auto-copy to clipboard safely without causing Android permission errors
-copyCSVToClipboardSilent();
+const fileName = "VeneerTally_Report_" + new Date().toISOString().slice(0,10) + ".xls";
+const content = getXLSString();
+const blob = new Blob([content], { type: "application/vnd.ms-excel;charset=utf-8" });
+const url = URL.createObjectURL(blob);
+const a = document.createElement("a");
+a.style.display = "none";
+a.href = url;
+a.download = fileName;
+document.body.appendChild(a);
+a.click();
+setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+document.getElementById("exportModal").style.display="none";
+showMessage("Excel download triggered.");
 }
 
-function copyCSVToClipboardSilent(){
+/* NATIVE DIRECT DOWNLOAD FOR CSV */
+function downloadCSVDirect(){
+if(!items.length){ alert("No items to export."); return; }
+const fileName = "VeneerTally_Report_" + new Date().toISOString().slice(0,10) + ".csv";
+const content = getCSVString();
+const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+const url = URL.createObjectURL(blob);
+const a = document.createElement("a");
+a.style.display = "none";
+a.href = url;
+a.download = fileName;
+document.body.appendChild(a);
+a.click();
+setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+document.getElementById("exportModal").style.display="none";
+showMessage("CSV download triggered.");
+}
+
+function copyCSVToClipboard(){
+if(!items.length){ alert("No items to copy."); return; }
 const csvData = getCSVString();
 try{
 navigator.clipboard.writeText(csvData);
+alert("CSV data copied to clipboard!");
+document.getElementById("exportModal").style.display="none";
 }catch(e){
-const textarea = document.getElementById("csvPreview");
+const textarea = document.createElement("textarea");
+textarea.value = csvData;
+document.body.appendChild(textarea);
 textarea.select();
 document.execCommand("copy");
+document.body.removeChild(textarea);
+alert("CSV data copied to clipboard!");
+document.getElementById("exportModal").style.display="none";
 }
 }
 
-async function copyCSVToClipboard(){
-if(!items.length){ alert("No items to copy."); return; }
-copyCSVToClipboardSilent();
-alert("CSV data copied to clipboard! You can now paste directly into Microsoft Excel or Google Sheets.");
+/* RELIABLE ANDROID PRINT & PDF GENERATION */
+function exportPDF(){
+if(!items.length){ alert("No items to print."); return; }
+document.getElementById("exportModal").style.display="none";
+setTimeout(()=>{ window.print(); }, 300);
 }
-
-function exportPDF(){ window.print(); }
 
 loadData(); renderTable(); updateTotals();
 </script>
