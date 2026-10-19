@@ -174,7 +174,7 @@ oninput="renderTable()" style="background:#293c44;color:white;border-color:#5366
 
 <div class="row no-print" style="margin-top:10px">
 <div class="col"><button class="btn-del" onclick="deleteLast()">🗑️ Delete Last</button></div>
-<div class="col"><button class="btn-excel" onclick="exportExcel()">📊 Export Excel</button></div>
+<div class="col"><button class="btn-excel" onclick="exportExcel()">📊 Export Excel Data</button></div>
 <div class="col"><button class="btn-pdf" onclick="exportPDF()">📄 Print / PDF</button></div>
 </div>
 
@@ -184,19 +184,17 @@ oninput="renderTable()" style="background:#293c44;color:white;border-color:#5366
 </div>
 
 <div id="exportModal" class="no-print">
-<h3>Excel Tally Report</h3>
-<p style="font-size:13px;color:#ddd">Select export option for Android WebView / UROVO:</p>
+<h3>Excel Tally Export</h3>
+<p style="font-size:12px;color:#ddd">Data formatted for Excel & Google Sheets:</p>
 
-<button class="btn-excel" style="margin-top:6px;background:#147d46" onclick="shareOrSaveFile('excel')">
-📲 SHARE / SAVE EXCEL FILE (.XLS)
+<textarea id="csvPreview" readonly style="width:100%;height:180px;background:#17232a;color:#81c784;font-family:monospace;font-size:11px;padding:8px;border:1px solid #53666e;border-radius:6px;margin-bottom:10px"></textarea>
+
+<button class="btn-add" style="margin-top:4px;background:#238b57" onclick="copyCSVToClipboard()">
+📋 COPY ALL CSV DATA
 </button>
 
-<button class="btn-excel" style="margin-top:8px;background:#154360" onclick="shareOrSaveFile('csv')">
-📲 SHARE / SAVE CSV FILE (.CSV)
-</button>
-
-<button class="btn-add" style="margin-top:8px" onclick="copyCSVToClipboard()">
-📋 COPY CSV TO CLIPBOARD
+<button class="btn-pdf" style="margin-top:8px" onclick="exportPDF()">
+📄 PRINT / SAVE AS PDF
 </button>
 
 <button class="btn-del" style="margin-top:12px" onclick="document.getElementById('exportModal').style.display='none'">
@@ -610,8 +608,6 @@ if(!confirm("Clear all records?")) return;
 items=[]; saveData(); renderTable(); updateTotals();
 }
 
-function exportExcel(){ document.getElementById("exportModal").style.display="block"; }
-
 function getCSVString(){
 const headings=["Pallet Number","Company/Supplier","Veneer Species","Barcode","Bundle No","Length (cm)","Width (cm)","Sheets","Area (m2)"];
 let csvRows=[headings.join(",")];
@@ -623,86 +619,30 @@ csvRows.push(`"GRAND TOTAL","","","","","","","",${total.toFixed(2)}`);
 return csvRows.join("\n");
 }
 
-function getXLSString(){
-let html='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
-html+='<head><meta charset="utf-8"></head><body><table><thead><tr>';
-html+='<th>Pallet Number</th><th>Company/Supplier</th><th>Veneer Species</th><th>Barcode</th><th>Bundle No</th><th>Length (cm)</th><th>Width (cm)</th><th>Sheets</th><th>Area (m2)</th>';
-html+='</tr></thead><tbody>';
-items.forEach(item=>{
-html+=`<tr><td>${item.pallet}</td><td>${item.company}</td><td>${item.specie}</td><td>'${item.barcode}</td><td>${item.bundle}</td><td>${item.length}</td><td>${item.width}</td><td>${item.sheets}</td><td>${item.area.toFixed(2)}</td></tr>`;
-});
-const total=items.reduce((sum,i)=>sum+i.area,0);
-html+=`<tr><td colspan="8"><b>GRAND TOTAL (m2)</b></td><td><b>${total.toFixed(2)}</b></td></tr></tbody></table></body></html>`;
-return html;
-}
-
-/* FIXED NATIVE ANDROID FILE DOWNLOAD & SHARE ENGINE */
-async function shareOrSaveFile(format){
+function exportExcel(){
 if(!items.length){ alert("No items to export."); return; }
-const fileName = "VeneerTally_Report_" + new Date().toISOString().slice(0,10) + (format==='excel' ? '.xls' : '.csv');
-const content = format === 'excel' ? getXLSString() : getCSVString();
-const mimeType = format === 'excel' ? 'application/vnd.ms-excel' : 'text/csv';
-
-/* 1. First Attempt: Native Web Share API */
-if(navigator.canShare){
-try{
-const file = new File([content], fileName, { type: mimeType });
-if(navigator.canShare({ files: [file] })){
-await navigator.share({
-files: [file],
-title: 'VeneerTally Report',
-text: 'Exported Veneer Tally Stockplate Spreadsheet'
-});
-document.getElementById("exportModal").style.display="none";
-showMessage("File shared / saved successfully.");
-return;
-}
-}catch(e){}
+const csvData = getCSVString();
+document.getElementById("csvPreview").value = csvData;
+document.getElementById("exportModal").style.display="block";
+// Auto-copy to clipboard safely without causing Android permission errors
+copyCSVToClipboardSilent();
 }
 
-/* 2. Direct Download Fallback for Android WebView */
+function copyCSVToClipboardSilent(){
+const csvData = getCSVString();
 try{
-const blob = new Blob([content], { type: mimeType });
-const blobUrl = URL.createObjectURL(blob);
-const link = document.createElement("a");
-link.href = blobUrl;
-link.download = fileName;
-document.body.appendChild(link);
-link.click();
-document.body.removeChild(link);
-setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
-document.getElementById("exportModal").style.display="none";
-showMessage("File download initiated.");
+navigator.clipboard.writeText(csvData);
 }catch(e){
-/* 3. Direct Data-URI Anchor Fallback */
-const link = document.createElement("a");
-link.href = "data:" + mimeType + ";charset=utf-8," + encodeURIComponent(content);
-link.download = fileName;
-document.body.appendChild(link);
-link.click();
-document.body.removeChild(link);
-document.getElementById("exportModal").style.display="none";
-showMessage("Data-URI download initiated.");
+const textarea = document.getElementById("csvPreview");
+textarea.select();
+document.execCommand("copy");
 }
 }
 
 async function copyCSVToClipboard(){
 if(!items.length){ alert("No items to copy."); return; }
-const csvData=getCSVString();
-try{
-await navigator.clipboard.writeText(csvData);
-alert("CSV data copied to clipboard! You can paste directly into Excel or Google Sheets.");
-document.getElementById("exportModal").style.display="none";
-}catch(e){
-const textarea=document.createElement("textarea");
-textarea.value=csvData;
-document.body.appendChild(textarea);
-textarea.select();
-document.execCommand("copy");
-document.body.removeChild(textarea);
-alert("CSV data copied to clipboard!");
-document.getElementById("exportModal").style.display="none";
-}
+copyCSVToClipboardSilent();
+alert("CSV data copied to clipboard! You can now paste directly into Microsoft Excel or Google Sheets.");
 }
 
 function exportPDF(){ window.print(); }
