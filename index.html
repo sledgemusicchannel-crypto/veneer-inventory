@@ -209,8 +209,8 @@ VeneerTally Pro · TIMBERplus & UROVO Hardware Optimized
 <script>
 "use strict";
 
-const STORAGE_KEY="veneerTallyPro_records_v10";
-const SETTINGS_KEY="veneerTallyPro_settings_v10";
+const STORAGE_KEY="veneerTallyPro_records_v11";
+const SETTINGS_KEY="veneerTallyPro_settings_v11";
 
 let items=[];
 let editingBarcode=null;
@@ -254,13 +254,13 @@ if(navigator.vibrate) navigator.vibrate(error?[180,80,180]:120);
 }
 }
 
-/* HIGH-PRECISION TIMBERPLUS / BSS / UROVO BARCODE PARSER */
+/* ROBUST TIMBERPLUS / BSS / UROVO BARCODE PARSER */
 function parseVeneerBarcode(raw){
 const text=String(raw||"").trim();
 const norm=text.replace(/[,;]/g," ").replace(/\s+/g," ");
 const result={ length:null, width:null, sheets:null, bundle:null, source:"" };
 
-// 1. Check for Label OCR / Standard Text Formats (e.g. "85LEN 23WIDE 24SHT" or "235 LEN 19 WIDE 14 SHT")
+// 1. Check for Text Standard Formats (e.g., "85 LEN 23 WIDE 24 SHT[span_0](start_span)"[span_0](end_span) or "235 LEN 19 WIDE 14 SHT[span_1](start_span)"[span_1](end_span))
 const lenMatch=norm.match(/(\d+(?:\.\d+)?)\s*(?:LEN|LENGTH)/i) || norm.match(/(?:LEN|LENGTH)\s*[:= -]?\s*(\d+(?:\.\d+)?)/i);
 const widMatch=norm.match(/(\d+(?:\.\d+)?)\s*(?:WIDE|WIDTH)/i) || norm.match(/(?:WIDE|WIDTH)\s*[:= -]?\s*(\d+(?:\.\d+)?)/i);
 const shtMatch=norm.match(/(\d+)\s*(?:SHT|SHEET|PCS)/i) || norm.match(/(?:SHT|SHEET|PCS)\s*[:= -]?\s*(\d+)/i);
@@ -276,32 +276,30 @@ if(bndMatch) result.bundle=bndMatch[1];
 return result;
 }
 
-// 2. TIMBERplus / BSS 20-digit Numeric Stockplate Barcodes (e.g. 00000520850230240169)
-// Format Breakdown: [6 digits Log ID][3 or 4 digits Length][3 digits Width][3 digits Sheets][4 digits Area/Seq]
+// 2. TIMBERplus / BSS Numeric Stockplate Barcodes (e.g., 00000520850230240169[span_2](start_span)[span_2](end_span))
 const digits=text.replace(/\D/g,"");
-if(digits.length >= 18 && digits.length <= 22){
-// Try 20-digit TIMBERplus standard layout
-const len=Number(digits.slice(7,10)); // e.g. 085 -> 85 or 235 -> 235
-const wid=Number(digits.slice(10,13)); // e.g. 023 -> 23 or 019 -> 19
-const sht=Number(digits.slice(13,16)); // e.g. 024 -> 24 or 014 -> 14
+if(digits.length >= 16 && digits.length <= 22){
+const len=Number(digits.slice(7,10));
+const wid=Number(digits.slice(10,13));
+const sht=Number(digits.slice(13,16));
 
-if(len > 10 && len < 600 && wid > 2 && wid < 200 && sht > 0 && sht < 200){
+if(len > 0 && wid > 0 && sht > 0){
 result.length=len;
 result.width=wid;
 result.sheets=sht;
 result.bundle=digits.slice(0,7);
-result.source="TIMBERplus 20-digit Barcode";
+result.source="TIMBERplus Numeric Barcode";
 return result;
 }
 }
 
-// 3. Sequential 3-number pattern fallback (e.g. "235 19 14")
+// 3. Sequential 3-number pattern fallback
 const seqMatch=norm.match(/\b(\d{2,3})\s+(\d{2,3})\s+(\d{1,3})\b/);
 if(seqMatch){
 const l=Number(seqMatch[1]);
 const w=Number(seqMatch[2]);
 const s=Number(seqMatch[3]);
-if(l>10 && w>2 && s>0){
+if(l>0 && w>0 && s>0){
 result.length=l; result.width=w; result.sheets=s;
 result.source="Sequence Match";
 return result;
@@ -323,7 +321,7 @@ setValue("sheets",String(parsed.sheets));
 if(parsed.bundle) setValue("bundleNum",parsed.bundle);
 showMessage("Captured ("+parsed.source+"): "+parsed.length+" × "+parsed.width+" × "+parsed.sheets+" ("+calculateArea(parsed.length,parsed.width,parsed.sheets)+" m²)");
 }else{
-showMessage("Captured barcode: "+code+". Please verify dimensions manually.");
+showMessage("Captured barcode: "+code+". Please verify dimensions.");
 }
 playBeep(false);
 document.getElementById("length").focus();
@@ -353,10 +351,24 @@ try{
 cameraStream=await navigator.mediaDevices.getUserMedia({ audio:false, video:{ facingMode:{ideal:"environment"} } });
 video.srcObject=cameraStream;
 await video.play();
+
+// Initialize BarcodeDetector API if available
 if("BarcodeDetector" in window){
-try{ nativeDetector=new BarcodeDetector(); }catch(e){ nativeDetector=new BarcodeDetector(); }
+try{
+nativeDetector = new BarcodeDetector({ formats: ['code_128', 'code_39', 'ean_13', 'qr_code', 'data_matrix'] });
 scanNativeVideo();
-}else if(window.ZXing){
+return;
+}catch(e){
+try{
+nativeDetector = new BarcodeDetector();
+scanNativeVideo();
+return;
+}catch(err){}
+}
+}
+
+// Fallback to ZXing Library
+if(window.ZXing){
 zxingReader=new ZXing.BrowserMultiFormatReader();
 cameraControls=await zxingReader.decodeFromVideoElement(video,(result)=>{
 if(result&&!scanBusy){
@@ -365,6 +377,8 @@ applyScannedBarcode(result.getText?result.getText():result.text);
 stopCameraScanner();
 }
 });
+} else {
+showMessage("Camera scanner library unavailable. Use Capture button.", true);
 }
 }catch(err){
 stopCameraScanner();
@@ -379,7 +393,8 @@ while(cameraStream&&nativeDetector){
 if(video.readyState>=2){
 try{
 const codes=await nativeDetector.detect(video);
-if(codes&&codes.length){
+if(codes&&codes.length&&!scanBusy){
+scanBusy=true;
 applyScannedBarcode(codes[0].rawValue);
 stopCameraScanner();
 return;
