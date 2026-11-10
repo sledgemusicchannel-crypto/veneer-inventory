@@ -57,7 +57,7 @@ th,td{border:1px solid #888}
 <div id="palletDisplay">Current Pallet: Pallet 01</div>
 <h1 id="totalM2">0.00 m²</h1>
 <div id="totalBundles">Total Bundles: 0</div>
-<div id="storageStatus" style="font-size:11px;margin-top:5px">UROVO / Hardware Scanner Ready</div>
+<div id="storageStatus" style="font-size:11px;margin-top:5px">UROVO / TIMBERplus Barcode Engine Active</div>
 </div>
 
 <div id="alertBox" class="alert" role="status"></div>
@@ -203,14 +203,14 @@ oninput="renderTable()" style="background:#293c44;color:white;border-color:#5366
 </div>
 
 <div class="footer-note no-print">
-VeneerTally Pro · TIMBERplus & UROVO 3000i Compatible
+VeneerTally Pro · TIMBERplus & UROVO Hardware Optimized
 </div>
 
 <script>
 "use strict";
 
-const STORAGE_KEY="veneerTallyPro_records_v9";
-const SETTINGS_KEY="veneerTallyPro_settings_v9";
+const STORAGE_KEY="veneerTallyPro_records_v10";
+const SETTINGS_KEY="veneerTallyPro_settings_v10";
 
 let items=[];
 let editingBarcode=null;
@@ -254,61 +254,60 @@ if(navigator.vibrate) navigator.vibrate(error?[180,80,180]:120);
 }
 }
 
-/* TIMBERPLUS / BSS / UROVO ADVANCED STOCKPLATE PARSER */
+/* HIGH-PRECISION TIMBERPLUS / BSS / UROVO BARCODE PARSER */
 function parseVeneerBarcode(raw){
 const text=String(raw||"").trim();
 const norm=text.replace(/[,;]/g," ").replace(/\s+/g," ");
 const result={ length:null, width:null, sheets:null, bundle:null, source:"" };
 
-const bssMatch=text.match(/\d{6}[A-Z0-9]{2}(\d{3})(\d{3})(\d{3})/i);
-if(bssMatch){
-const l=Number(bssMatch[1]);
-const w=Number(bssMatch[2]);
-const s=Number(bssMatch[3]);
-if(l>0 && w>0 && s>0){
-result.length=l; result.width=w; result.sheets=s;
-result.source="BSS TIMBERplus Code";
+// 1. Check for Label OCR / Standard Text Formats (e.g. "85LEN 23WIDE 24SHT" or "235 LEN 19 WIDE 14 SHT")
+const lenMatch=norm.match(/(\d+(?:\.\d+)?)\s*(?:LEN|LENGTH)/i) || norm.match(/(?:LEN|LENGTH)\s*[:= -]?\s*(\d+(?:\.\d+)?)/i);
+const widMatch=norm.match(/(\d+(?:\.\d+)?)\s*(?:WIDE|WIDTH)/i) || norm.match(/(?:WIDE|WIDTH)\s*[:= -]?\s*(\d+(?:\.\d+)?)/i);
+const shtMatch=norm.match(/(\d+)\s*(?:SHT|SHEET|PCS)/i) || norm.match(/(?:SHT|SHEET|PCS)\s*[:= -]?\s*(\d+)/i);
+
+if(lenMatch && widMatch && shtMatch){
+result.length=Number(lenMatch[1]);
+result.width=Number(widMatch[1]);
+result.sheets=Number(shtMatch[1]);
+result.source="TIMBERplus Text Standard";
+
+const bndMatch=text.match(/\b(QY\d+|BYSL\d+[a-z]?|S-HS\d+-\d+)\b/i);
+if(bndMatch) result.bundle=bndMatch[1];
+return result;
+}
+
+// 2. TIMBERplus / BSS 20-digit Numeric Stockplate Barcodes (e.g. 00000520850230240169)
+// Format Breakdown: [6 digits Log ID][3 or 4 digits Length][3 digits Width][3 digits Sheets][4 digits Area/Seq]
+const digits=text.replace(/\D/g,"");
+if(digits.length >= 18 && digits.length <= 22){
+// Try 20-digit TIMBERplus standard layout
+const len=Number(digits.slice(7,10)); // e.g. 085 -> 85 or 235 -> 235
+const wid=Number(digits.slice(10,13)); // e.g. 023 -> 23 or 019 -> 19
+const sht=Number(digits.slice(13,16)); // e.g. 024 -> 24 or 014 -> 14
+
+if(len > 10 && len < 600 && wid > 2 && wid < 200 && sht > 0 && sht < 200){
+result.length=len;
+result.width=wid;
+result.sheets=sht;
+result.bundle=digits.slice(0,7);
+result.source="TIMBERplus 20-digit Barcode";
 return result;
 }
 }
 
-const lenMatch=norm.match(/(?:(\d+(?:\.\d+)?)\s*LEN|\bLEN(?:GTH)?\b\s*[:= -]?\s*(\d+(?:\.\d+)?))/i);
-const widMatch=norm.match(/(?:(\d+(?:\.\d+)?)\s*WIDE|\bWID(?:TH)?\b\s*[:= -]?\s*(\d+(?:\.\d+)?))/i);
-const shtMatch=norm.match(/(?:(\d+)\s*SHT|\bSHTS?\b|\bSHEETS?\b\s*[:= -]?\s*(\d+))/i);
-
-if((lenMatch&&(lenMatch[1]||lenMatch[2])) && (widMatch&&(widMatch[1]||widMatch[2])) && (shtMatch&&(shtMatch[1]||shtMatch[2]))){
-result.length=Number(lenMatch[1]||lenMatch[2]);
-result.width=Number(widMatch[1]||widMatch[2]);
-result.sheets=Number(shtMatch[1]||shtMatch[2]);
-result.source="Label Text";
-const b=norm.match(/(?:\bBUNDLE\b|\bBND\b|\bID\b)\s*[:= -]?\s*([A-Z0-9_-]+)/i);
-if(b) result.bundle=b[1];
-return result;
-}
-
+// 3. Sequential 3-number pattern fallback (e.g. "235 19 14")
 const seqMatch=norm.match(/\b(\d{2,3})\s+(\d{2,3})\s+(\d{1,3})\b/);
 if(seqMatch){
 const l=Number(seqMatch[1]);
 const w=Number(seqMatch[2]);
 const s=Number(seqMatch[3]);
-if(l>0 && w>0 && s>0){
+if(l>10 && w>2 && s>0){
 result.length=l; result.width=w; result.sheets=s;
-result.source="Numeric Sequence";
+result.source="Sequence Match";
 return result;
 }
 }
 
-const digits=text.replace(/\D/g,"");
-if(/^00000430\d{12}$/.test(digits)){
-const len=Number(digits.slice(8,10));
-const wid=Number(digits.slice(10,13));
-const sht=Number(digits.slice(13,16));
-if(len>0&&wid>0&&sht>0){
-result.length=len; result.width=wid; result.sheets=sht;
-result.bundle=digits.slice(16)||null;
-result.source="Supplier Format";
-}
-}
 return result;
 }
 
@@ -324,7 +323,7 @@ setValue("sheets",String(parsed.sheets));
 if(parsed.bundle) setValue("bundleNum",parsed.bundle);
 showMessage("Captured ("+parsed.source+"): "+parsed.length+" × "+parsed.width+" × "+parsed.sheets+" ("+calculateArea(parsed.length,parsed.width,parsed.sheets)+" m²)");
 }else{
-showMessage("Captured barcode: "+code+". Please verify dimensions.");
+showMessage("Captured barcode: "+code+". Please verify dimensions manually.");
 }
 playBeep(false);
 document.getElementById("length").focus();
@@ -647,7 +646,7 @@ if(!items.length){ alert("No items to copy."); return; }
 const textData = document.getElementById("csvPreview").value;
 try{
 await navigator.clipboard.writeText(textData);
-alert("Data copied to clipboard! You can now paste directly into Excel, Google Sheets, or Word.");
+alert("Data copied to clipboard!");
 document.getElementById("exportModal").style.display="none";
 }catch(e){
 const textarea = document.getElementById("csvPreview");
