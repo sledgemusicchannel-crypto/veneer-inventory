@@ -57,7 +57,7 @@ th,td{border:1px solid #888}
 <div id="palletDisplay">Current Pallet: Pallet 01</div>
 <h1 id="totalM2">0.00 m²</h1>
 <div id="totalBundles">Total Bundles: 0</div>
-<div id="storageStatus" style="font-size:11px;margin-top:5px">UROVO / TIMBERplus Barcode Engine Active</div>
+<div id="storageStatus" style="font-size:11px;margin-top:5px">UROVO / High-Speed Hardware Mode Active</div>
 </div>
 
 <div id="alertBox" class="alert" role="status"></div>
@@ -99,7 +99,7 @@ style="width:100%;max-height:340px;object-fit:contain;background:#000;border-rad
 </button>
 
 <div style="font-size:12px;text-align:center;color:#d5e0e4;margin-top:6px">
-Point camera at barcode label and tap capture.
+Point camera at barcode label for instant auto-capture.
 </div>
 </div>
 
@@ -203,14 +203,14 @@ oninput="renderTable()" style="background:#293c44;color:white;border-color:#5366
 </div>
 
 <div class="footer-note no-print">
-VeneerTally Pro · TIMBERplus & UROVO Hardware Optimized
+VeneerTally Pro · TIMBERplus & UROVO Instant Engine
 </div>
 
 <script>
 "use strict";
 
-const STORAGE_KEY="veneerTallyPro_records_v13";
-const SETTINGS_KEY="veneerTallyPro_settings_v13";
+const STORAGE_KEY="veneerTallyPro_records_v16";
+const SETTINGS_KEY="veneerTallyPro_settings_v16";
 
 let items=[];
 let editingBarcode=null;
@@ -254,15 +254,22 @@ if(navigator.vibrate) navigator.vibrate(error?[180,80,180]:120);
 }
 }
 
-/* STRICT ZERO-STRIPPING PARSER FOR EXACT DIMENSIONS */
 function cleanDim(val){
 let n = Number(val);
 if(!Number.isFinite(n) || n <= 0) return null;
-// If the scanner pulls a trailing zero padding digit (e.g. 850 instead of 85, or 230 instead of 23), strip it safely
 while(n > 300 && n % 10 === 0){
 n = n / 10;
 }
 return n;
+}
+
+function cleanSheets(val){
+let n = Number(val);
+if(!Number.isFinite(n) || n <= 0) return null;
+while(n > 99 && n % 10 === 0){
+n = n / 10;
+}
+return Math.round(n);
 }
 
 function parseVeneerBarcode(raw){
@@ -270,7 +277,6 @@ const text=String(raw||"").trim();
 const norm=text.replace(/[,;]/g," ").replace(/\s+/g," ");
 const result={ length:null, width:null, sheets:null, bundle:null, source:"" };
 
-// 1. Check for Text Standard Formats (e.g., "85 LEN 23 WIDE 24 SHT[span_1](start_span)"[span_1](end_span))
 const lenMatch=norm.match(/(\d+(?:\.\d+)?)\s*(?:LEN|LENGTH)/i) || norm.match(/(?:LEN|LENGTH)\s*[:= -]?\s*(\d+(?:\.\d+)?)/i);
 const widMatch=norm.match(/(\d+(?:\.\d+)?)\s*(?:WIDE|WIDTH)/i) || norm.match(/(?:WIDE|WIDTH)\s*[:= -]?\s*(\d+(?:\.\d+)?)/i);
 const shtMatch=norm.match(/(\d+)\s*(?:SHT|SHEET|PCS)/i) || norm.match(/(?:SHT|SHEET|PCS)\s*[:= -]?\s*(\d+)/i);
@@ -278,7 +284,7 @@ const shtMatch=norm.match(/(\d+)\s*(?:SHT|SHEET|PCS)/i) || norm.match(/(?:SHT|SH
 if(lenMatch && widMatch && shtMatch){
 result.length=cleanDim(lenMatch[1]);
 result.width=cleanDim(widMatch[1]);
-result.sheets=Number(shtMatch[1]); // Sheets shouldn't be stripped
+result.sheets=cleanSheets(shtMatch[1]);
 result.source="TIMBERplus Text Standard";
 
 const bndMatch=text.match(/\b(QY\d+|BYSL\d+[a-z]?|S-HS\d+-\d+)\b/i);
@@ -286,14 +292,13 @@ if(bndMatch) result.bundle=bndMatch[1];
 if(result.length && result.width && result.sheets) return result;
 }
 
-// 2. TIMBERplus / BSS Numeric Stockplate Barcodes (e.g., 00000520850230240169[span_2](start_span)[span_2](end_span))
 const digits=text.replace(/\D/g,"");
 if(digits.length >= 16 && digits.length <= 22){
 let len = cleanDim(digits.slice(7, 10));
 let wid = cleanDim(digits.slice(10, 13));
-let sht = Number(digits.slice(13, 16));
+let sht = cleanSheets(digits.slice(13, 16));
 
-if(len && wid && sht > 0){
+if(len && wid && sht){
 result.length=len;
 result.width=wid;
 result.sheets=sht;
@@ -303,13 +308,12 @@ return result;
 }
 }
 
-// 3. Sequential 3-number pattern fallback
-const seqMatch=norm.match(/\b(\d{2,4})\s+(\d{2,4})\s+(\d{1,3})\b/);
+const seqMatch=norm.match(/\b(\d{2,4})\s+(\d{2,4})\s+(\d{1,4})\b/);
 if(seqMatch){
 let l=cleanDim(seqMatch[1]);
 let w=cleanDim(seqMatch[2]);
-let s=Number(seqMatch[3]);
-if(l && w && s > 0){
+let s=cleanSheets(seqMatch[3]);
+if(l && w && s){
 result.length=l;
 result.width=w;
 result.sheets=s;
@@ -339,7 +343,6 @@ playBeep(false);
 document.getElementById("length").focus();
 }
 
-/* HARDWARE SCANNER LISTENER (UROVO 3000i / TITAN 2) */
 document.getElementById("barcode").addEventListener("keydown", function(e){
 if(e.key === "Enter" || e.key === "Tab"){
 e.preventDefault();
@@ -350,7 +353,6 @@ applyScannedBarcode(this.value);
 let zxingReader=null;
 let cameraControls=null;
 let cameraStream=null;
-let nativeDetector=null;
 let scanBusy=false;
 
 async function startCameraScanner(){
@@ -360,58 +362,55 @@ panel.style.display="block";
 document.getElementById("startScanBtn").style.display="none";
 document.getElementById("stopScanBtn").style.display="block";
 try{
-cameraStream=await navigator.mediaDevices.getUserMedia({ audio:false, video:{ facingMode:{ideal:"environment"} } });
+// Optimized high-speed video constraints for instant focusing
+cameraStream=await navigator.mediaDevices.getUserMedia({
+audio:false,
+video:{
+facingMode:{ideal:"environment"},
+width:{ideal:1280, max:1920},
+height:{ideal:720, max:1080},
+frameRate:{ideal:30, max:60}
+}
+});
 video.srcObject=cameraStream;
 await video.play();
 
-if("BarcodeDetector" in window){
-try{
-nativeDetector = new BarcodeDetector({ formats: ['code_128', 'code_39', 'ean_13', 'qr_code', 'data_matrix'] });
-scanNativeVideo();
-return;
-}catch(e){
-try{
-nativeDetector = new BarcodeDetector();
-scanNativeVideo();
-return;
-}catch(err){}
+// Enable hardware focus if browser permits
+const track = cameraStream.getVideoTracks()[0];
+if(track && track.getCapabilities){
+const capabilities = track.getCapabilities();
+if(capabilities.focusMode && capabilities.focusMode.includes('continuous')){
+try{ await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); }catch(e){}
 }
 }
 
 if(window.ZXing){
-zxingReader=new ZXing.BrowserMultiFormatReader();
-cameraControls=await zxingReader.decodeFromVideoElement(video,(result)=>{
-if(result&&!scanBusy){
-scanBusy=true;
-applyScannedBarcode(result.getText?result.getText():result.text);
+// Configure ZXing hints for zero-latency decoding
+const hints = new Map();
+const formats = [
+ZXing.BarcodeFormat.CODE_128,
+ZXing.BarcodeFormat.CODE_39,
+ZXing.BarcodeFormat.DATA_MATRIX,
+ZXing.BarcodeFormat.QR_CODE
+];
+hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+hints.set(ZXing.DecodeHintType.TRY_HARDER, false);
+
+zxingReader = new ZXing.BrowserMultiFormatReader(hints, 100);
+cameraControls = await zxingReader.decodeFromVideoElement(video, (result) => {
+if(result && !scanBusy){
+scanBusy = true;
+applyScannedBarcode(result.getText ? result.getText() : result.text);
 stopCameraScanner();
 }
 });
 } else {
-showMessage("Camera scanner library unavailable. Use Capture button.", true);
+showMessage("Loading scanner components...", true);
 }
 }catch(err){
 stopCameraScanner();
-showMessage("Camera error: permission or hardware restriction.",true);
+showMessage("Camera error: check camera permissions.",true);
 playBeep(true);
-}
-}
-
-async function scanNativeVideo(){
-const video=document.getElementById("cameraVideo");
-while(cameraStream&&nativeDetector){
-if(video.readyState>=2){
-try{
-const codes=await nativeDetector.detect(video);
-if(codes&&codes.length&&!scanBusy){
-scanBusy=true;
-applyScannedBarcode(codes[0].rawValue);
-stopCameraScanner();
-return;
-}
-}catch(e){}
-}
-await new Promise(resolve=>setTimeout(resolve,150));
 }
 }
 
@@ -421,7 +420,7 @@ if(!video || video.readyState < 2){
 showMessage("Camera not ready yet.", true);
 return;
 }
-showMessage("Scanning captured frame...");
+showMessage("Scanning frame...");
 try{
 const canvas=document.createElement("canvas");
 canvas.width=video.videoWidth || 1280;
@@ -430,18 +429,12 @@ const ctx=canvas.getContext("2d");
 ctx.drawImage(video,0,0,canvas.width,canvas.height);
 
 let found=null;
-if("BarcodeDetector" in window){
+if(window.ZXing && ZXing.BrowserMultiFormatReader){
+const hints = new Map();
+hints.set(ZXing.DecodeHintType.TRY_HARDER, false);
+const reader=new ZXing.BrowserMultiFormatReader(hints);
 try{
-const detector=new BarcodeDetector();
-const results=await detector.detect(canvas);
-if(results && results.length) found=results[0].rawValue;
-}catch(e){}
-}
-
-if(!found && window.ZXing && ZXing.BrowserMultiFormatReader){
-const reader=new ZXing.BrowserMultiFormatReader();
-try{
-const res=await reader.decodeFromImageUrl(canvas.toDataURL());
+const res=await reader.decodeFromImageUrl(canvas.toDataURL("image/jpeg", 0.8));
 if(res) found=res.getText ? res.getText() : res.text;
 }catch(e){}
 }
@@ -451,7 +444,7 @@ applyScannedBarcode(found);
 stopCameraScanner();
 }else{
 playBeep(true);
-showMessage("No barcode detected in frame. Try holding steadier.", true);
+showMessage("No barcode detected in frame.", true);
 }
 }catch(err){
 playBeep(true);
@@ -463,7 +456,7 @@ function stopCameraScanner(){
 try{ if(cameraControls&&cameraControls.stop) cameraControls.stop(); }catch(e){}
 cameraControls=null;
 try{ if(zxingReader&&zxingReader.reset) zxingReader.reset(); }catch(e){}
-zxingReader=null; nativeDetector=null;
+zxingReader=null;
 if(cameraStream){ cameraStream.getTracks().forEach(t=>t.stop()); cameraStream=null; }
 const panel=document.getElementById("cameraPanel");
 if(panel) panel.style.display="none";
@@ -481,10 +474,10 @@ try{
 const img=new Image();
 const imageURL=URL.createObjectURL(file);
 await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src=imageURL; });
-if("BarcodeDetector" in window){
-const detector=new BarcodeDetector();
-const results=await detector.detect(img);
-if(results&&results.length) found=results[0].rawValue;
+if(window.ZXing){
+const reader=new ZXing.BrowserMultiFormatReader();
+const res=await reader.decodeFromImageUrl(imageURL);
+if(res) found=res.getText ? res.getText() : res.text;
 }
 URL.revokeObjectURL(imageURL);
 if(found) applyScannedBarcode(found);
@@ -635,7 +628,7 @@ items.forEach(item=>{
 csvRows.push([`"${item.pallet}"`,`"${item.company}"`,`"${item.specie}"`,`"${item.barcode}"`,`"${item.bundle}"`,item.length,item.width,item.sheets,item.area.toFixed(2)].join(","));
 });
 const total=items.reduce((sum,i)=>sum+i.area,0);
-csvRows.push(`"GRAND TOTAL","","","","","","","",${total.toFixed(2)}`);
+csvRows.push(`"GRAND TOTAL","","","","","",", ${total.toFixed(2)}`);
 return csvRows.join("\n");
 }
 
