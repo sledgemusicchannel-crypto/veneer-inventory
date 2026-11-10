@@ -57,7 +57,7 @@ th,td{border:1px solid #888}
 <div id="palletDisplay">Current Pallet: Pallet 01</div>
 <h1 id="totalM2">0.00 m²</h1>
 <div id="totalBundles">Total Bundles: 0</div>
-<div id="storageStatus" style="font-size:11px;margin-top:5px">UROVO / TIMBERplus Barcode Engine Active</div>
+<div id="storageStatus" style="font-size:11px;margin-top:5px">UROVO / Hardware Scanner Ready</div>
 </div>
 
 <div id="alertBox" class="alert" role="status"></div>
@@ -209,8 +209,8 @@ VeneerTally Pro · TIMBERplus & UROVO Hardware Optimized
 <script>
 "use strict";
 
-const STORAGE_KEY="veneerTallyPro_records_v14";
-const SETTINGS_KEY="veneerTallyPro_settings_v14";
+const STORAGE_KEY="veneerTallyPro_records_v15";
+const SETTINGS_KEY="veneerTallyPro_settings_v15";
 
 let items=[];
 let editingBarcode=null;
@@ -254,7 +254,6 @@ if(navigator.vibrate) navigator.vibrate(error?[180,80,180]:120);
 }
 }
 
-/* STRICT ZERO-STRIPPING FUNCTIONS FOR EXACT NUMBERS */
 function cleanDim(val){
 let n = Number(val);
 if(!Number.isFinite(n) || n <= 0) return null;
@@ -267,7 +266,6 @@ return n;
 function cleanSheets(val){
 let n = Number(val);
 if(!Number.isFinite(n) || n <= 0) return null;
-// Strip trailing zero if sheets accidentally parsed with a padding zero (e.g. 240 -> 24)
 while(n > 99 && n % 10 === 0){
 n = n / 10;
 }
@@ -279,7 +277,6 @@ const text=String(raw||"").trim();
 const norm=text.replace(/[,;]/g," ").replace(/\s+/g," ");
 const result={ length:null, width:null, sheets:null, bundle:null, source:"" };
 
-// 1. Text Standard Formats (e.g., "85 LEN 23 WIDE 24 SHT[span_0](start_span)"[span_0](end_span))
 const lenMatch=norm.match(/(\d+(?:\.\d+)?)\s*(?:LEN|LENGTH)/i) || norm.match(/(?:LEN|LENGTH)\s*[:= -]?\s*(\d+(?:\.\d+)?)/i);
 const widMatch=norm.match(/(\d+(?:\.\d+)?)\s*(?:WIDE|WIDTH)/i) || norm.match(/(?:WIDE|WIDTH)\s*[:= -]?\s*(\d+(?:\.\d+)?)/i);
 const shtMatch=norm.match(/(\d+)\s*(?:SHT|SHEET|PCS)/i) || norm.match(/(?:SHT|SHEET|PCS)\s*[:= -]?\s*(\d+)/i);
@@ -295,7 +292,6 @@ if(bndMatch) result.bundle=bndMatch[1];
 if(result.length && result.width && result.sheets) return result;
 }
 
-// 2. TIMBERplus / BSS Numeric Stockplate Barcodes (e.g., 00000520850230240169[span_1](start_span)[span_1](end_span))
 const digits=text.replace(/\D/g,"");
 if(digits.length >= 16 && digits.length <= 22){
 let len = cleanDim(digits.slice(7, 10));
@@ -312,7 +308,6 @@ return result;
 }
 }
 
-// 3. Sequential 3-number pattern fallback
 const seqMatch=norm.match(/\b(\d{2,4})\s+(\d{2,4})\s+(\d{1,4})\b/);
 if(seqMatch){
 let l=cleanDim(seqMatch[1]);
@@ -348,7 +343,6 @@ playBeep(false);
 document.getElementById("length").focus();
 }
 
-/* HARDWARE SCANNER LISTENER (UROVO 3000i / TITAN 2) */
 document.getElementById("barcode").addEventListener("keydown", function(e){
 if(e.key === "Enter" || e.key === "Tab"){
 e.preventDefault();
@@ -359,7 +353,6 @@ applyScannedBarcode(this.value);
 let zxingReader=null;
 let cameraControls=null;
 let cameraStream=null;
-let nativeDetector=null;
 let scanBusy=false;
 
 async function startCameraScanner(){
@@ -373,20 +366,6 @@ cameraStream=await navigator.mediaDevices.getUserMedia({ audio:false, video:{ fa
 video.srcObject=cameraStream;
 await video.play();
 
-if("BarcodeDetector" in window){
-try{
-nativeDetector = new BarcodeDetector({ formats: ['code_128', 'code_39', 'ean_13', 'qr_code', 'data_matrix'] });
-scanNativeVideo();
-return;
-}catch(e){
-try{
-nativeDetector = new BarcodeDetector();
-scanNativeVideo();
-return;
-}catch(err){}
-}
-}
-
 if(window.ZXing){
 zxingReader=new ZXing.BrowserMultiFormatReader();
 cameraControls=await zxingReader.decodeFromVideoElement(video,(result)=>{
@@ -397,30 +376,12 @@ stopCameraScanner();
 }
 });
 } else {
-showMessage("Camera scanner library unavailable. Use Capture button.", true);
+showMessage("ZXing library loading...", true);
 }
 }catch(err){
 stopCameraScanner();
 showMessage("Camera error: permission or hardware restriction.",true);
 playBeep(true);
-}
-}
-
-async function scanNativeVideo(){
-const video=document.getElementById("cameraVideo");
-while(cameraStream&&nativeDetector){
-if(video.readyState>=2){
-try{
-const codes=await nativeDetector.detect(video);
-if(codes&&codes.length&&!scanBusy){
-scanBusy=true;
-applyScannedBarcode(codes[0].rawValue);
-stopCameraScanner();
-return;
-}
-}catch(e){}
-}
-await new Promise(resolve=>setTimeout(resolve,150));
 }
 }
 
@@ -439,15 +400,7 @@ const ctx=canvas.getContext("2d");
 ctx.drawImage(video,0,0,canvas.width,canvas.height);
 
 let found=null;
-if("BarcodeDetector" in window){
-try{
-const detector=new BarcodeDetector();
-const results=await detector.detect(canvas);
-if(results && results.length) found=results[0].rawValue;
-}catch(e){}
-}
-
-if(!found && window.ZXing && ZXing.BrowserMultiFormatReader){
+if(window.ZXing && ZXing.BrowserMultiFormatReader){
 const reader=new ZXing.BrowserMultiFormatReader();
 try{
 const res=await reader.decodeFromImageUrl(canvas.toDataURL());
@@ -472,7 +425,7 @@ function stopCameraScanner(){
 try{ if(cameraControls&&cameraControls.stop) cameraControls.stop(); }catch(e){}
 cameraControls=null;
 try{ if(zxingReader&&zxingReader.reset) zxingReader.reset(); }catch(e){}
-zxingReader=null; nativeDetector=null;
+zxingReader=null;
 if(cameraStream){ cameraStream.getTracks().forEach(t=>t.stop()); cameraStream=null; }
 const panel=document.getElementById("cameraPanel");
 if(panel) panel.style.display="none";
@@ -490,10 +443,10 @@ try{
 const img=new Image();
 const imageURL=URL.createObjectURL(file);
 await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src=imageURL; });
-if("BarcodeDetector" in window){
-const detector=new BarcodeDetector();
-const results=await detector.detect(img);
-if(results&&results.length) found=results[0].rawValue;
+if(window.ZXing){
+const reader=new ZXing.BrowserMultiFormatReader();
+const res=await reader.decodeFromImageUrl(imageURL);
+if(res) found=res.getText ? res.getText() : res.text;
 }
 URL.revokeObjectURL(imageURL);
 if(found) applyScannedBarcode(found);
@@ -598,6 +551,7 @@ const query=getValue("searchFilter").toLowerCase();
 body.replaceChildren();
 const filtered=items.filter(i=>[i.pallet,i.company,i.specie,i.barcode,i.bundle].join(" ").toLowerCase().includes(query));
 
+filtered.items=filtered;
 filtered.forEach(item=>{
 const row=document.createElement("tr");
 [item.pallet, item.specie, item.barcode, item.length+"×"+item.width+"×"+item.sheets, item.area.toFixed(2)].forEach((val, idx)=>{
