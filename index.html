@@ -209,8 +209,8 @@ VeneerTally Pro · TIMBERplus & UROVO Hardware Optimized
 <script>
 "use strict";
 
-const STORAGE_KEY="veneerTallyPro_records_v11";
-const SETTINGS_KEY="veneerTallyPro_settings_v11";
+const STORAGE_KEY="veneerTallyPro_records_v12";
+const SETTINGS_KEY="veneerTallyPro_settings_v12";
 
 let items=[];
 let editingBarcode=null;
@@ -254,13 +254,13 @@ if(navigator.vibrate) navigator.vibrate(error?[180,80,180]:120);
 }
 }
 
-/* ROBUST TIMBERPLUS / BSS / UROVO BARCODE PARSER */
+/* CLEAN PARSER TO STRIP EXTRA TRAILING PADDING DIGITS */
 function parseVeneerBarcode(raw){
 const text=String(raw||"").trim();
 const norm=text.replace(/[,;]/g," ").replace(/\s+/g," ");
 const result={ length:null, width:null, sheets:null, bundle:null, source:"" };
 
-// 1. Check for Text Standard Formats (e.g., "85 LEN 23 WIDE 24 SHT[span_0](start_span)"[span_0](end_span) or "235 LEN 19 WIDE 14 SHT[span_1](start_span)"[span_1](end_span))
+// 1. Check for Text Standard Formats (e.g., "85 LEN 23 WIDE 24 SHT[span_0](start_span)"[span_0](end_span))
 const lenMatch=norm.match(/(\d+(?:\.\d+)?)\s*(?:LEN|LENGTH)/i) || norm.match(/(?:LEN|LENGTH)\s*[:= -]?\s*(\d+(?:\.\d+)?)/i);
 const widMatch=norm.match(/(\d+(?:\.\d+)?)\s*(?:WIDE|WIDTH)/i) || norm.match(/(?:WIDE|WIDTH)\s*[:= -]?\s*(\d+(?:\.\d+)?)/i);
 const shtMatch=norm.match(/(\d+)\s*(?:SHT|SHEET|PCS)/i) || norm.match(/(?:SHT|SHEET|PCS)\s*[:= -]?\s*(\d+)/i);
@@ -276,29 +276,39 @@ if(bndMatch) result.bundle=bndMatch[1];
 return result;
 }
 
-// 2. TIMBERplus / BSS Numeric Stockplate Barcodes (e.g., 00000520850230240169[span_2](start_span)[span_2](end_span))
+// 2. TIMBERplus / BSS Numeric Stockplate Barcodes (e.g., 00000520850230240169[span_1](start_span)[span_1](end_span))
 const digits=text.replace(/\D/g,"");
 if(digits.length >= 16 && digits.length <= 22){
-const len=Number(digits.slice(7,10));
-const wid=Number(digits.slice(10,13));
-const sht=Number(digits.slice(13,16));
+// Extract raw 4-digit or 3-digit chunks and parse as numbers to naturally strip extra zero padding
+let rawLen = digits.slice(6, 10); // e.g. "2085" or "0085"
+let rawWid = digits.slice(10, 13); // e.g. "023"
+let rawSht = digits.slice(13, 16); // e.g. "024"
+
+let len = Number(rawLen);
+let wid = Number(rawWid);
+let sht = Number(rawSht);
+
+// If length came out over 999 (like 2085 meaning 208.5 or 85 with extra prefix), adjust safely
+if(len > 999) len = Math.round(len / 10);
+if(len > 500 && len % 10 === 0) len = len / 10; // Removes trailing zero padding if captured 4 digits
 
 if(len > 0 && wid > 0 && sht > 0){
 result.length=len;
 result.width=wid;
 result.sheets=sht;
-result.bundle=digits.slice(0,7);
+result.bundle=digits.slice(0,6);
 result.source="TIMBERplus Numeric Barcode";
 return result;
 }
 }
 
 // 3. Sequential 3-number pattern fallback
-const seqMatch=norm.match(/\b(\d{2,3})\s+(\d{2,3})\s+(\d{1,3})\b/);
+const seqMatch=norm.match(/\b(\d{2,4})\s+(\d{2,4})\s+(\d{1,3})\b/);
 if(seqMatch){
-const l=Number(seqMatch[1]);
-const w=Number(seqMatch[2]);
-const s=Number(seqMatch[3]);
+let l=Number(seqMatch[1]);
+let w=Number(seqMatch[2]);
+let s=Number(seqMatch[3]);
+if(l>999) l=Math.round(l/10);
 if(l>0 && w>0 && s>0){
 result.length=l; result.width=w; result.sheets=s;
 result.source="Sequence Match";
@@ -352,7 +362,6 @@ cameraStream=await navigator.mediaDevices.getUserMedia({ audio:false, video:{ fa
 video.srcObject=cameraStream;
 await video.play();
 
-// Initialize BarcodeDetector API if available
 if("BarcodeDetector" in window){
 try{
 nativeDetector = new BarcodeDetector({ formats: ['code_128', 'code_39', 'ean_13', 'qr_code', 'data_matrix'] });
@@ -367,7 +376,6 @@ return;
 }
 }
 
-// Fallback to ZXing Library
 if(window.ZXing){
 zxingReader=new ZXing.BrowserMultiFormatReader();
 cameraControls=await zxingReader.decodeFromVideoElement(video,(result)=>{
