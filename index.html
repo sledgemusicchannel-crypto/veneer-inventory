@@ -10,6 +10,7 @@
 <title>VeneerTally Pro</title>
 <link rel="manifest" href="manifest.json">
 <script src="https://unpkg.com/@zxing/library@0.19.1"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
 <style>
 *{box-sizing:border-box}
@@ -83,11 +84,23 @@ small{color:#596970}
   border: 2px solid #238b57;
   background: #000;
 }
+.scan-guide-frame {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 86%;
+  height: 42%;
+  border: 2px dashed rgba(0, 230, 118, 0.75);
+  border-radius: 8px;
+  transform: translate(-50%, -50%);
+  z-index: 9;
+  pointer-events: none;
+}
 .scan-reticle {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 80%;
+  width: 82%;
   height: 2px;
   background: #00e676;
   box-shadow: 0 0 8px #00e676;
@@ -116,7 +129,7 @@ th,td{border:1px solid #888}
 <div id="palletDisplay">Current Pallet: Pallet 01</div>
 <h1 id="totalM2">0.00 m²</h1>
 <div id="totalBundles">Total Bundles: 0</div>
-<div id="storageStatus" style="font-size:11px;margin-top:5px">UROVO / TIMBERplus Barcode Engine Active</div>
+<div id="storageStatus" style="font-size:11px;margin-top:5px">TIMBERplus + Label OCR Dual Engine Active</div>
 </div>
 
 <div id="alertBox" class="alert" role="status"></div>
@@ -136,7 +149,7 @@ th,td{border:1px solid #888}
 
 <div class="form-group" style="margin-bottom:0">
 <label for="veneerSpecie">Veneer Species</label>
-<input id="veneerSpecie" placeholder="e.g. Mapa Burl / Oak" maxlength="100">
+<input id="veneerSpecie" placeholder="e.g. Mapa Burl / Ebony / Oak" maxlength="100">
 </div>
 </div>
 
@@ -151,6 +164,7 @@ th,td{border:1px solid #888}
 
 <div id="cameraPanel" style="display:none;margin-top:8px;background:#07110d;padding:8px;border-radius:8px">
 <div class="scan-region-box">
+  <div class="scan-guide-frame"></div>
   <div class="scan-reticle"></div>
   <video id="cameraVideo" playsinline muted autoplay style="width:100%;max-height:360px;object-fit:cover;background:#000"></video>
 </div>
@@ -158,7 +172,7 @@ th,td{border:1px solid #888}
 <div class="row" style="margin-top:6px">
   <div class="col">
     <button class="btn-add" style="background:#147d46;font-size:12px" onclick="manualCaptureFrame()">
-    📸 INSTANT SNAP & DECODE
+    📸 INSTANT SNAP (BARCODE + TEXT)
     </button>
   </div>
   <div class="col" id="torchContainer" style="display:none">
@@ -169,7 +183,7 @@ th,td{border:1px solid #888}
 </div>
 
 <div style="font-size:11px;text-align:center;color:#d5e0e4;margin-top:6px">
-Hold barcode along laser line. Auto-focus & contrast sharpening active.
+Fit the full white sticker inside the dashed box so both barcode &amp; L/W/P numbers are captured.
 </div>
 </div>
 
@@ -183,11 +197,11 @@ style="display:none" onchange="handleImageScan(event)">
 
 <div class="row no-print" style="margin-top:8px">
 <div class="col form-group">
-<label for="barcode">Barcode / ID (TIMBERplus / BSS / UROVO)</label>
+<label for="barcode">Barcode / ID (TIMBERplus / SF / QY)</label>
 <input id="barcode" placeholder="Scan or type barcode" maxlength="200" autocomplete="off">
 </div>
 
-<div class="form-group" style="width:100px">
+<div class="form-group" style="width:110px">
 <label for="bundleNum">Bundle No.</label>
 <input id="bundleNum" placeholder="No." maxlength="60">
 </div>
@@ -275,7 +289,7 @@ oninput="renderTable()" style="background:#293c44;color:white;border-color:#5366
 </div>
 
 <div class="footer-note no-print">
-VeneerTally Pro · TIMBERplus & UROVO Hardware Optimized
+VeneerTally Pro · TIMBERplus, SF &amp; UROVO Hardware Optimized
 </div>
 </div>
 
@@ -327,87 +341,159 @@ if(navigator.vibrate) navigator.vibrate(error?[180,80,180]:120);
 }
 }
 
-/* STRICT ZERO-STRIPPING PARSER FOR EXACT DIMENSIONS */
+/* PRESERVE EXACT DIMENSIONS (INCLUDING 335cm, 385cm, 18.5cm, 12.5cm) */
 function cleanDim(val){
 let n = Number(val);
 if(!Number.isFinite(n) || n <= 0) return null;
-while(n > 300 && n % 10 === 0){
+// Only convert millimeters to centimeters if >= 600 (e.g., 2350 -> 235)
+if(n >= 600){
 n = n / 10;
 }
-return n;
+return Math.round(n * 100) / 100;
 }
 
+/* UNIVERSAL PARSER FOR BOTH LABEL FORMATS IN YOUR PHOTOS */
 function parseVeneerBarcode(raw){
 const text=String(raw||"").trim();
-const norm=text.replace(/[,;]/g," ").replace(/\s+/g," ");
+const norm=text.replace(/[,;|]/g," ").replace(/\s+/g," ");
 const result={ length:null, width:null, sheets:null, bundle:null, source:"" };
 
-// 1. Text Standard Formats
-const lenMatch=norm.match(/(\d+(?:\.\d+)?)\s*(?:LEN|LENGTH)/i) || norm.match(/(?:LEN|LENGTH)\s*[:= -]?\s*(\d+(?:\.\d+)?)/i);
-const widMatch=norm.match(/(\d+(?:\.\d+)?)\s*(?:WIDE|WIDTH)/i) || norm.match(/(?:WIDE|WIDTH)\s*[:= -]?\s*(\d+(?:\.\d+)?)/i);
-const shtMatch=norm.match(/(\d+)\s*(?:SHT|SHEET|PCS)/i) || norm.match(/(?:SHT|SHEET|PCS)\s*[:= -]?\s*(\d+)/i);
+// Extract Bundle IDs seen on your labels:
+// e.g. QY000017, QY000003, 03314A, 49163, 2753-1, BYSL..., S-HS...
+const qyMatch = text.match(/\b(QY\d+|BYSL\d+[a-z]?|S-HS\d+-\d+)\b/i);
+const sfMatch = text.match(/\b(\d{4,6}[A-Z]?(?:-\d+)?)\s+SF(?:\s+[A-Z0-9]+)?\s+(\d{2,4})\b/i);
+if(qyMatch){
+  result.bundle = qyMatch[1].toUpperCase();
+} else if(sfMatch){
+  result.bundle = sfMatch[1] + "-" + sfMatch[2];
+}
+
+// 1. Format A ("L 335  W 18.5  P 24  14.87 m²" / "L 385  W 12.5  P 24")
+const lwpMatch = norm.match(/\bL\s*[:= -]?\s*(\d{2,4}(?:\.\d+)?)\s+W\s*[:= -]?\s*(\d{1,3}(?:\.\d+)?)\s+(?:P|S|SHT|PCS)\s*[:= -]?\s*(\d{1,3})\b/i);
+if(lwpMatch){
+  result.length = cleanDim(lwpMatch[1]);
+  result.width = cleanDim(lwpMatch[2]);
+  result.sheets = Number(lwpMatch[3]);
+  result.source = "L/W/P Label Format";
+  if(result.length && result.width && result.sheets > 0) return result;
+}
+
+// 2. Format B ("235 LEN  19 WIDE  14 SHT  6.25 SM")
+const lenMatch = norm.match(/(\d+(?:\.\d+)?)\s*(?:LEN(?:GTH)?)\b/i) || norm.match(/\b(?:LEN(?:GTH)?|L)\s*[:= -]?\s*(\d+(?:\.\d+)?)/i);
+const widMatch = norm.match(/(\d+(?:\.\d+)?)\s*(?:WID(?:E|TH)?)\b/i) || norm.match(/\b(?:WID(?:E|TH)?|W)\s*[:= -]?\s*(\d+(?:\.\d+)?)/i);
+const shtMatch = norm.match(/(\d+)\s*(?:SHT|SHEETS?|PCS|P)\b/i) || norm.match(/\b(?:SHT|SHEETS?|PCS|P)\s*[:= -]?\s*(\d+)\b/i);
 
 if(lenMatch && widMatch && shtMatch){
-result.length=cleanDim(lenMatch[1]);
-result.width=cleanDim(widMatch[1]);
-result.sheets=Number(shtMatch[1]);
-result.source="TIMBERplus Text Standard";
-
-const bndMatch=text.match(/\b(QY\d+|BYSL\d+[a-z]?|S-HS\d+-\d+)\b/i);
-if(bndMatch) result.bundle=bndMatch[1];
-if(result.length && result.width && result.sheets) return result;
+  result.length = cleanDim(lenMatch[1]);
+  result.width = cleanDim(widMatch[1]);
+  result.sheets = Number(shtMatch[1]);
+  result.source = "TIMBERplus Text Standard";
+  if(result.length && result.width && result.sheets > 0) return result;
 }
 
-// 2. TIMBERplus / BSS Numeric Stockplate Barcodes
-const digits=text.replace(/\D/g,"");
-if(digits.length >= 16 && digits.length <= 22){
-let len = cleanDim(digits.slice(7, 10));
-let wid = cleanDim(digits.slice(10, 13));
-let sht = Number(digits.slice(13, 16));
-
-if(len && wid && sht > 0){
-result.length=len;
-result.width=wid;
-result.sheets=sht;
-result.bundle=digits.slice(0,7);
-result.source="TIMBERplus Numeric Barcode";
-return result;
-}
-}
-
-// 3. Sequential 3-number pattern fallback
-const seqMatch=norm.match(/\b(\d{2,4})\s+(\d{2,4})\s+(\d{1,3})\b/);
+// 3. Delimited 3-number sequence (e.g., "235x19x14", "335*18.5*24", "200/13/24")
+const seqMatch = norm.match(/\b(\d{2,4}(?:\.\d+)?)\s*[xX×*\/\- ]\s*(\d{1,3}(?:\.\d+)?)\s*[xX×*\/\- ]\s*(\d{1,3})\b/);
 if(seqMatch){
-let l=cleanDim(seqMatch[1]);
-let w=cleanDim(seqMatch[2]);
-let s=Number(seqMatch[3]);
-if(l && w && s > 0){
-result.length=l;
-result.width=w;
-result.sheets=s;
-result.source="Sequence Match";
-return result;
+  const l = cleanDim(seqMatch[1]);
+  const w = cleanDim(seqMatch[2]);
+  const s = Number(seqMatch[3]);
+  if(l && w && s > 0){
+    result.length = l;
+    result.width = w;
+    result.sheets = s;
+    result.source = "Dimension Sequence";
+    return result;
+  }
 }
+
+// 4. TIMBERplus / BSS Numeric Barcode String (14 to 24 digits)
+const digits = text.replace(/\D/g,"");
+if(digits.length >= 16 && digits.length <= 24){
+  const len = cleanDim(digits.slice(7, 10));
+  const wid = cleanDim(digits.slice(10, 13));
+  const sht = Number(digits.slice(13, 16));
+  if(len && wid && sht > 0){
+    result.length = len;
+    result.width = wid;
+    result.sheets = sht;
+    if(!result.bundle) result.bundle = digits.slice(0, 7);
+    result.source = "TIMBERplus Numeric Barcode";
+    return result;
+  }
+} else if(digits.length >= 12 && digits.length <= 15){
+  const tail = digits.slice(-8);
+  const len = cleanDim(tail.slice(0, 3));
+  const wid = cleanDim(tail.slice(3, 6));
+  const sht = Number(tail.slice(6, 8));
+  if(len && wid && sht > 0){
+    result.length = len;
+    result.width = wid;
+    result.sheets = sht;
+    if(!result.bundle) result.bundle = digits.slice(0, digits.length - 8);
+    result.source = "Compact Numeric Barcode";
+    return result;
+  }
 }
 
 return result;
 }
 
-function applyScannedBarcode(raw){
-const code=String(raw||"").trim();
+/* OCR HELPER: READS PRINTED "L 335 W 18.5 P 24" OR "235 LEN 19 WIDE 14 SHT" WHEN BARCODE ONLY HAS ID */
+async function extractLabelTextViaOCR(canvas){
+if(!window.Tesseract) return null;
+try{
+  const { data: { text } } = await Tesseract.recognize(canvas, 'eng', {
+    tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.-:/ '
+  });
+  return text || "";
+}catch(e){
+  return null;
+}
+}
+
+function createSharpenedCanvasFromSource(sourceEl, w, h){
+const canvas = document.createElement("canvas");
+canvas.width = w;
+canvas.height = h;
+const ctx = canvas.getContext("2d", { willReadFrequently: true });
+ctx.filter = "contrast(1.55) brightness(1.08) grayscale(100%)";
+ctx.drawImage(sourceEl, 0, 0, w, h);
+return canvas;
+}
+
+async function applyScannedBarcode(raw, snapshotCanvas = null){
+const code = String(raw || "").trim();
 if(!code){ playBeep(true); showMessage("Empty barcode returned.",true); return; }
-setValue("barcode",code);
-const parsed=parseVeneerBarcode(code);
-if(parsed.length!==null){
-setValue("length",String(parsed.length));
-setValue("width",String(parsed.width));
-setValue("sheets",String(parsed.sheets));
-if(parsed.bundle) setValue("bundleNum",parsed.bundle);
-showMessage("Captured ("+parsed.source+"): "+parsed.length+" × "+parsed.width+" × "+parsed.sheets+" ("+calculateArea(parsed.length,parsed.width,parsed.sheets)+" m²)");
-}else{
-showMessage("Captured barcode: "+code+". Please verify dimensions.");
+setValue("barcode", code);
+let parsed = parseVeneerBarcode(code);
+
+// If barcode only contained the Bundle ID (like "03314A" or "49163"), run OCR on the same snapshot to grab L / W / P!
+if(parsed.length === null && snapshotCanvas){
+  showMessage("Barcode ID " + code + " captured. Reading printed L / W / Sheets...");
+  const ocrText = await extractLabelTextViaOCR(snapshotCanvas);
+  if(ocrText){
+    const ocrParsed = parseVeneerBarcode(ocrText);
+    if(ocrParsed.length !== null){
+      parsed = ocrParsed;
+      parsed.source = "Barcode + Label OCR";
+      if(!parsed.bundle && ocrParsed.bundle) parsed.bundle = ocrParsed.bundle;
+    }
+  }
 }
-playBeep(false);
+
+if(parsed.length !== null){
+  setValue("length", String(parsed.length));
+  setValue("width", String(parsed.width));
+  setValue("sheets", String(parsed.sheets));
+  if(parsed.bundle) setValue("bundleNum", parsed.bundle);
+  showMessage("Captured (" + parsed.source + "): " + parsed.length + " × " + parsed.width + " × " + parsed.sheets + " (" + calculateArea(parsed.length, parsed.width, parsed.sheets) + " m²)");
+  playBeep(false);
+} else {
+  // Even if dimensions weren't in the barcode, fill Bundle No. if recognized
+  if(parsed.bundle) setValue("bundleNum", parsed.bundle);
+  showMessage("Barcode ID: " + code + ". Tap 'Instant Snap' with full label in box or enter L/W/Sheets.", true);
+  playBeep(false);
+}
 document.getElementById("length").focus();
 }
 
@@ -433,9 +519,9 @@ const video=document.getElementById("cameraVideo");
 panel.style.display="block";
 document.getElementById("startScanBtn").style.display="none";
 document.getElementById("stopScanBtn").style.display="block";
+scanBusy=false;
 
 try{
-// Force 1080p high-resolution stream, 60/30fps, and continuous autofocus mode
 const constraints = {
   audio: false,
   video: {
@@ -451,12 +537,10 @@ cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
 video.srcObject = cameraStream;
 await video.play();
 
-// Apply advanced hardware constraints (Autofocus & Flashlight if supported)
 const track = cameraStream.getVideoTracks()[0];
 if(track && track.getCapabilities){
   const caps = track.getCapabilities();
   const advancedConstraints = {};
-  
   if(caps.focusMode && caps.focusMode.includes("continuous")){
     advancedConstraints.focusMode = "continuous";
   }
@@ -464,9 +548,8 @@ if(track && track.getCapabilities){
     document.getElementById("torchContainer").style.display = "block";
   }
   if(caps.zoom){
-    advancedConstraints.zoom = Math.min(caps.zoom.max, 1.5); // Slight optical zoom for macro barcode clarity
+    advancedConstraints.zoom = Math.min(caps.zoom.max, 1.4);
   }
-  
   if(Object.keys(advancedConstraints).length > 0){
     try { await track.applyConstraints({ advanced: [advancedConstraints] }); } catch(e){}
   }
@@ -500,10 +583,11 @@ if(window.ZXing){
   ]);
 
   zxingReader = new ZXing.BrowserMultiFormatReader(hints);
-  cameraControls = await zxingReader.decodeFromVideoElement(video, (result) => {
+  cameraControls = await zxingReader.decodeFromVideoElement(video, async (result) => {
     if(result && !scanBusy){
       scanBusy = true;
-      applyScannedBarcode(result.getText ? result.getText() : result.text);
+      const snap = createSharpenedCanvasFromSource(video, video.videoWidth || 1280, video.videoHeight || 720);
+      await applyScannedBarcode(result.getText ? result.getText() : result.text, snap);
       stopCameraScanner();
     }
   });
@@ -518,36 +602,35 @@ if(window.ZXing){
 }
 }
 
-/* Fast 60FPS Video Processing Loop with Contrast & Sharpen Filter */
+/* Fast Video Loop with Snapshot Capture for Dual Barcode + OCR */
 async function scanNativeVideoLoop(){
 const video = document.getElementById("cameraVideo");
-const canvas = document.createElement("canvas");
-const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
-while(cameraStream && nativeDetector){
-  if(video.readyState >= 2){
+while(cameraStream && nativeDetector && !scanBusy){
+  if(video.readyState >= 2 && video.videoWidth > 0){
     try{
-      // Pass video direct to native GPU detector first
       let codes = await nativeDetector.detect(video);
-      
-      // If GPU scan misses, process a sharpened high-contrast canvas slice
-      if((!codes || !codes.length) && video.videoWidth > 0){
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.filter = "contrast(1.4) brightness(1.1) grayscale(100%)";
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        codes = await nativeDetector.detect(canvas);
+      let snapCanvas = null;
+
+      if(!codes || !codes.length){
+        snapCanvas = createSharpenedCanvasFromSource(video, video.videoWidth, video.videoHeight);
+        codes = await nativeDetector.detect(snapCanvas);
       }
 
       if(codes && codes.length && !scanBusy){
         scanBusy = true;
-        applyScannedBarcode(codes[0].rawValue);
+        if(!snapCanvas){
+          snapCanvas = createSharpenedCanvasFromSource(video, video.videoWidth, video.videoHeight);
+        }
+        // Prefer the longest barcode string if both 1D and DataMatrix are detected
+        codes.sort((a, b) => (b.rawValue || "").length - (a.rawValue || "").length);
+        await applyScannedBarcode(codes[0].rawValue, snapCanvas);
         stopCameraScanner();
         return;
       }
     } catch(e){}
   }
-  await new Promise(resolve => setTimeout(resolve, 80)); // 12.5 scans per second
+  await new Promise(resolve => setTimeout(resolve, 90));
 }
 }
 
@@ -563,7 +646,7 @@ if(track && track.getCapabilities && track.getCapabilities().torch){
 }
 }
 
-/* Manual Frame Capture with High Contrast Sharpening */
+/* Manual Frame Capture: Scans Barcode AND Printed Text Simultaneously */
 async function manualCaptureFrame(){
 const video = document.getElementById("cameraVideo");
 if(!video || video.readyState < 2){
@@ -571,43 +654,57 @@ if(!video || video.readyState < 2){
   return;
 }
 
-showMessage("Enhancing snapshot focus...");
+showMessage("Scanning barcode & reading printed label text...");
 try{
-  const canvas = document.createElement("canvas");
-  canvas.width = video.videoWidth || 1920;
-  canvas.height = video.videoHeight || 1080;
-  const ctx = canvas.getContext("2d");
-  
-  // Apply image sharpening & contrast enhancement
-  ctx.filter = "contrast(1.5) brightness(1.1) grayscale(100%)";
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const canvas = createSharpenedCanvasFromSource(video, video.videoWidth || 1920, video.videoHeight || 1080);
 
-  let found = null;
+  let foundBarcode = null;
   if("BarcodeDetector" in window){
     try{
       const detector = new BarcodeDetector();
       const results = await detector.detect(canvas);
-      if(results && results.length) found = results[0].rawValue;
+      if(results && results.length){
+        results.sort((a, b) => (b.rawValue || "").length - (a.rawValue || "").length);
+        foundBarcode = results[0].rawValue;
+      }
     }catch(e){}
   }
 
-  if(!found && window.ZXing && ZXing.BrowserMultiFormatReader){
+  if(!foundBarcode && window.ZXing && ZXing.BrowserMultiFormatReader){
     const hints = new Map();
     hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
     const reader = new ZXing.BrowserMultiFormatReader(hints);
     try{
       const res = await reader.decodeFromImageUrl(canvas.toDataURL("image/jpeg", 0.95));
-      if(res) found = res.getText ? res.getText() : res.text;
+      if(res) foundBarcode = res.getText ? res.getText() : res.text;
     }catch(e){}
   }
 
-  if(found){
-    applyScannedBarcode(found);
+  if(foundBarcode){
+    await applyScannedBarcode(foundBarcode, canvas);
     stopCameraScanner();
-  } else {
-    playBeep(true);
-    showMessage("Barcode not recognized. Hold closer to the line.", true);
+    return;
   }
+
+  // Fallback: If barcode is blurry, read the printed L / W / P or LEN / WIDE / SHT text directly!
+  const ocrText = await extractLabelTextViaOCR(canvas);
+  if(ocrText){
+    const ocrParsed = parseVeneerBarcode(ocrText);
+    if(ocrParsed.length !== null){
+      if(ocrParsed.bundle) setValue("barcode", ocrParsed.bundle);
+      if(ocrParsed.bundle) setValue("bundleNum", ocrParsed.bundle);
+      setValue("length", String(ocrParsed.length));
+      setValue("width", String(ocrParsed.width));
+      setValue("sheets", String(ocrParsed.sheets));
+      showMessage("Captured via Label OCR: " + ocrParsed.length + " × " + ocrParsed.width + " × " + ocrParsed.sheets + " (" + calculateArea(ocrParsed.length, ocrParsed.width, ocrParsed.sheets) + " m²)");
+      playBeep(false);
+      stopCameraScanner();
+      return;
+    }
+  }
+
+  playBeep(true);
+  showMessage("Label not clear. Hold steady inside dashed box & tap Snap again.", true);
 }catch(err){
   playBeep(true);
   showMessage("Capture processing error.", true);
@@ -632,37 +729,55 @@ scanBusy = false;
 async function handleImageScan(event){
 const file=event.target.files&&event.target.files[0];
 if(!file) return;
-showMessage("Processing photo...");
+showMessage("Processing label photo (Barcode + Text)...");
 let found=null;
 try{
 const img=new Image();
 const imageURL=URL.createObjectURL(file);
 await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src=imageURL; });
 
-const canvas = document.createElement("canvas");
-canvas.width = img.naturalWidth || 1920;
-canvas.height = img.naturalHeight || 1080;
-const ctx = canvas.getContext("2d");
-ctx.filter = "contrast(1.4) grayscale(100%)";
-ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+const canvas = createSharpenedCanvasFromSource(img, img.naturalWidth || 1920, img.naturalHeight || 1080);
 
 if("BarcodeDetector" in window){
-const detector=new BarcodeDetector();
-const results=await detector.detect(canvas);
-if(results&&results.length) found=results[0].rawValue;
+  try{
+    const detector=new BarcodeDetector();
+    const results=await detector.detect(canvas);
+    if(results&&results.length){
+      results.sort((a, b) => (b.rawValue || "").length - (a.rawValue || "").length);
+      found=results[0].rawValue;
+    }
+  }catch(e){}
 }
 
 if(!found && window.ZXing){
-const reader = new ZXing.BrowserMultiFormatReader();
-try {
-  const res = await reader.decodeFromImageUrl(canvas.toDataURL("image/jpeg", 0.95));
-  if(res) found = res.getText ? res.getText() : res.text;
-} catch(e){}
+  const hints = new Map();
+  hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+  const reader = new ZXing.BrowserMultiFormatReader(hints);
+  try {
+    const res = await reader.decodeFromImageUrl(canvas.toDataURL("image/jpeg", 0.95));
+    if(res) found = res.getText ? res.getText() : res.text;
+  } catch(e){}
+}
+
+if(found){
+  await applyScannedBarcode(found, canvas);
+} else {
+  const ocrText = await extractLabelTextViaOCR(canvas);
+  const ocrParsed = ocrText ? parseVeneerBarcode(ocrText) : { length: null };
+  if(ocrParsed.length !== null){
+    if(ocrParsed.bundle){ setValue("barcode", ocrParsed.bundle); setValue("bundleNum", ocrParsed.bundle); }
+    setValue("length", String(ocrParsed.length));
+    setValue("width", String(ocrParsed.width));
+    setValue("sheets", String(ocrParsed.sheets));
+    showMessage("Captured via Photo OCR: " + ocrParsed.length + " × " + ocrParsed.width + " × " + ocrParsed.sheets);
+    playBeep(false);
+  } else {
+    showMessage("No clear barcode or dimensions detected in photo.",true);
+    playBeep(true);
+  }
 }
 
 URL.revokeObjectURL(imageURL);
-if(found) applyScannedBarcode(found);
-else showMessage("No clear barcode detected in photo.",true);
 }catch(e){ showMessage("Failed processing photo.",true); }
 event.target.value="";
 }
@@ -765,7 +880,7 @@ const filtered=items.filter(i=>[i.pallet,i.company,i.specie,i.barcode,i.bundle].
 
 filtered.forEach(item=>{
 const row=document.createElement("tr");
-[item.pallet, item.specie, item.barcode, item.length+"×"+item.width+"×"+item.sheets, item.area.toFixed(2)].forEach((val, idx)=>{
+[item.pallet, item.specie, item.barcode, item.length+"×"+item.width+"×"+item.sheets, item.area.toFixed(2)].forEach((val)=>{
 const cell=document.createElement("td");
 cell.textContent=val;
 row.appendChild(cell);
