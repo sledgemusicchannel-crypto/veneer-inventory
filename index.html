@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<title>VeneerTally Pro</title>
+<title id="appTitle">VeneerTally Pro</title>
 <link rel="manifest" href="manifest.json">
 <script src="https://unpkg.com/@zxing/library@0.19.1"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -123,7 +123,17 @@ th,td{border:1px solid #888}
 <body>
 
 <div class="app-container">
-<h2>🌿 VeneerTally Pro</h2>
+<div class="no-print" style="display:flex; justify-content:flex-end; margin-bottom:5px;">
+  <select id="langSelect" onchange="changeLanguage(this.value)" style="width:auto; padding:5px; font-size:12px; background:#293c44; color:white; border:1px solid #53666e; border-radius:6px;">
+    <option value="en">English</option>
+    <option value="vi">Tiếng Việt</option>
+    <option value="zh">中文</option>
+    <option value="ja">日本語</option>
+    <option value="ko">한국어</option>
+  </select>
+</div>
+
+<h2 id="lblMainHeader">🌿 VeneerTally Pro</h2>
 
 <div class="dashboard no-print">
 <div id="palletDisplay">Current Pallet: Pallet 01</div>
@@ -137,29 +147,29 @@ th,td{border:1px solid #888}
 <div class="meta-box no-print">
 <div class="row">
 <div class="col form-group">
-<label for="palletNum">Pallet Number</label>
+<label for="palletNum" id="lblPalletNum">Pallet Number</label>
 <input id="palletNum" value="Pallet 01" maxlength="60">
 </div>
 
 <div class="col form-group">
-<label for="companyName">Company / Supplier</label>
+<label for="companyName" id="lblCompanyName">Company / Supplier</label>
 <input id="companyName" placeholder="Supplier name" maxlength="100">
 </div>
 </div>
 
 <div class="form-group" style="margin-bottom:0">
-<label for="veneerSpecie">Veneer Species</label>
+<label for="veneerSpecie" id="lblVeneerSpecie">Veneer Species</label>
 <input id="veneerSpecie" placeholder="e.g. Mapa Burl / Ebony / Oak" maxlength="100">
 </div>
 </div>
 
 <div class="no-print">
 <button class="btn-scan" id="startScanBtn" onclick="startCameraScanner()">
-⚡ START HIGH-SPEED CAMERA SCANNER
+⚡ <span id="lblStartScan">START HIGH-SPEED CAMERA SCANNER</span>
 </button>
 
 <button class="btn-del" id="stopScanBtn" onclick="stopCameraScanner()" style="display:none">
-✕ STOP CAMERA
+✕ <span id="lblStopScan">STOP CAMERA</span>
 </button>
 
 <div id="cameraPanel" style="display:none;margin-top:8px;background:#07110d;padding:8px;border-radius:8px">
@@ -172,17 +182,17 @@ th,td{border:1px solid #888}
 <div class="row" style="margin-top:6px">
   <div class="col">
     <button class="btn-add" style="background:#147d46;font-size:12px" onclick="manualCaptureFrame()">
-    📸 INSTANT SNAP (BARCODE + TEXT)
+    📸 <span id="lblInstantSnap">INSTANT SNAP (BARCODE + TEXT)</span>
     </button>
   </div>
   <div class="col" id="torchContainer" style="display:none">
     <button class="btn-scan" style="background:#f39c12;font-size:12px" id="toggleTorchBtn" onclick="toggleTorch()">
-    💡 TOGGLE FLASH
+    💡 <span id="lblToggleFlash">TOGGLE FLASH</span>
     </button>
   </div>
 </div>
 
-<div style="font-size:11px;text-align:center;color:#d5e0e4;margin-top:6px">
+<div id="lblCameraHint" style="font-size:11px;text-align:center;color:#d5e0e4;margin-top:6px">
 Fit the full white sticker inside the dashed box so both barcode &amp; L/W/P numbers are captured.
 </div>
 </div>
@@ -191,41 +201,41 @@ Fit the full white sticker inside the dashed box so both barcode &amp; L/W/P num
 style="display:none" onchange="handleImageScan(event)">
 
 <button class="btn-scan" onclick="document.getElementById('cameraInput').click()" style="margin-top:6px">
-📸 TAKE PHOTO TO SCAN (BACKUP)
+📸 <span id="lblTakePhoneScan">TAKE PHOTO TO SCAN (BACKUP)</span>
 </button>
 </div>
 
 <div class="row no-print" style="margin-top:8px">
 <div class="col form-group">
-<label for="barcode">Barcode / ID (TIMBERplus / SF / QY)</label>
+<label for="barcode" id="lblBarcodeLabel">Barcode / ID (TIMBERplus / SF / QY)</label>
 <input id="barcode" placeholder="Scan or type barcode" maxlength="200" autocomplete="off">
 </div>
 
 <div class="form-group" style="width:110px">
-<label for="bundleNum">Bundle No.</label>
+<label for="bundleNum" id="lblBundleNum">Bundle No.</label>
 <input id="bundleNum" placeholder="No." maxlength="60">
 </div>
 </div>
 
 <div class="row no-print">
 <div class="col form-group">
-<label for="length">Length (cm)</label>
+<label for="length" id="lblLength">Length (cm)</label>
 <input type="number" id="length" placeholder="Length" min="0.01" step="any">
 </div>
 
 <div class="col form-group">
-<label for="width">Width (cm)</label>
+<label for="width" id="lblWidth">Width (cm)</label>
 <input type="number" id="width" placeholder="Width" min="0.01" step="any">
 </div>
 
 <div class="col form-group">
-<label for="sheets">Sheets</label>
+<label for="sheets" id="lblSheets">Sheets</label>
 <input type="number" id="sheets" value="1" min="1" step="1">
 </div>
 </div>
 
 <button class="btn-add no-print" id="saveBtn" onclick="addBundle()">
-➕ Add Bundle to Tally
+➕ <span id="lblAddBundle">Add Bundle to Tally</span>
 </button>
 
 <div class="no-print" style="margin-top:10px">
@@ -237,18 +247,18 @@ oninput="renderTable()" style="background:#293c44;color:white;border-color:#5366
 <table>
 <thead>
 <tr>
-<th>Pallet</th>
-<th>Species / Supplier</th>
-<th>Barcode / Bundle</th>
-<th>Len × Wid × Sheets</th>
-<th>m²</th>
-<th class="no-print">Actions</th>
+<th id="thPallet">Pallet</th>
+<th id="thSpeciesSupplier">Species / Supplier</th>
+<th id="thBarcodeBundle">Barcode / Bundle</th>
+<th id="thLenWidSheets">Len × Wid × Sheets</th>
+<th id="thArea">m²</th>
+<th class="no-print" id="thActions">Actions</th>
 </tr>
 </thead>
 <tbody id="tallyBody"></tbody>
 <tfoot>
 <tr>
-<td colspan="4" style="text-align:right">GRAND TOTAL:</td>
+<td colspan="4" style="text-align:right" id="lblGrandTotal">GRAND TOTAL:</td>
 <td id="tableGrandTotal">0.00 m²</td>
 <td class="no-print"></td>
 </tr>
@@ -257,33 +267,33 @@ oninput="renderTable()" style="background:#293c44;color:white;border-color:#5366
 </div>
 
 <div class="row no-print" style="margin-top:10px">
-<div class="col"><button class="btn-del" onclick="deleteLast()">🗑️ Delete Last</button></div>
-<div class="col"><button class="btn-excel" onclick="exportExcel()">📊 Export Data</button></div>
-<div class="col"><button class="btn-pdf" onclick="exportPDF()">📄 Report Summary</button></div>
+<div class="col"><button class="btn-del" onclick="deleteLast()">🗑️ <span id="lblDeleteLast">Delete Last</span></button></div>
+<div class="col"><button class="btn-excel" onclick="exportExcel()">📊 <span id="lblExportData">Export Data</span></button></div>
+<div class="col"><button class="btn-pdf" onclick="exportPDF()">📄 <span id="lblReportSummary">Report Summary</span></button></div>
 </div>
 
 <div class="row no-print">
-<div class="col"><button class="btn-scan" onclick="newPallet()">＋ New Pallet</button></div>
-<div class="col"><button class="btn-del" onclick="clearAll()">Clear All Records</button></div>
+<div class="col"><button class="btn-scan" onclick="newPallet()">＋ <span id="lblNewPallet">New Pallet</span></button></div>
+<div class="col"><button class="btn-del" onclick="clearAll()"><span id="lblClearAll">Clear All Records</span></button></div>
 </div>
 
 <div id="exportModal" class="no-print">
 <div class="modal-content">
 <h3 id="modalTitle" style="color:#81c784;margin-top:0;margin-bottom:5px">Export Tally Report</h3>
-<p style="font-size:12px;color:#ddd;margin-top:0">Ready for Excel, Google Sheets, or Sharing:</p>
+<p id="lblModalSub" style="font-size:12px;color:#ddd;margin-top:0">Ready for Excel, Google Sheets, or Sharing:</p>
 
 <textarea id="csvPreview" readonly style="width:100%;height:160px;background:#17232a;color:#81c784;font-family:monospace;font-size:11px;padding:8px;border:1px solid #53666e;border-radius:6px;margin-bottom:8px"></textarea>
 
 <button class="btn-add" style="margin-top:4px;background:#218c52" onclick="copyCSVToClipboard()">
-📋 COPY FORMATTED DATA TO CLIPBOARD
+📋 <span id="lblCopyClipboard">COPY FORMATTED DATA TO CLIPBOARD</span>
 </button>
 
 <button class="btn-scan" style="margin-top:8px;background:#154360" onclick="shareReportText()">
-📲 SHARE REPORT (WhatsApp / Email / Drive)
+📲 <span id="lblShareReport">SHARE REPORT (WhatsApp / Email / Drive)</span>
 </button>
 
 <button class="btn-del" style="margin-top:12px" onclick="document.getElementById('exportModal').style.display='none'">
-✕ Close Window
+✕ <span id="lblCloseWindow">Close Window</span>
 </button>
 </div>
 </div>
@@ -298,9 +308,296 @@ VeneerTally Pro · TIMBERplus, SF &amp; UROVO Hardware Optimized
 
 const STORAGE_KEY="veneerTallyPro_records_v13";
 const SETTINGS_KEY="veneerTallyPro_settings_v13";
+const LANG_KEY="veneerTallyPro_lang_v1";
 
 let items=[];
 let editingBarcode=null;
+let currentLang="en";
+
+const translations = {
+  en: {
+    appTitle: "VeneerTally Pro",
+    mainHeader: "🌿 VeneerTally Pro",
+    palletDisplay: "Current Pallet: ",
+    totalBundles: "Total Bundles: ",
+    storageStatus: "TIMBERplus + Label OCR Dual Engine Active",
+    palletNum: "Pallet Number",
+    companyName: "Company / Supplier",
+    companyPlaceholder: "Supplier name",
+    veneerSpecie: "Veneer Species",
+    speciePlaceholder: "e.g. Mapa Burl / Ebony / Oak",
+    startScan: "START HIGH-SPEED CAMERA SCANNER",
+    stopScan: "STOP CAMERA",
+    instantSnap: "INSTANT SNAP (BARCODE + TEXT)",
+    toggleFlash: "TOGGLE FLASH",
+    cameraHint: "Fit the full white sticker inside the dashed box so both barcode & L/W/P numbers are captured.",
+    takePhotoScan: "TAKE PHOTO TO SCAN (BACKUP)",
+    barcodeLabel: "Barcode / ID (TIMBERplus / SF / QY)",
+    barcodePlaceholder: "Scan or type barcode",
+    bundleNum: "Bundle No.",
+    length: "Length (cm)",
+    width: "Width (cm)",
+    sheets: "Sheets",
+    addBundle: "Add Bundle to Tally",
+    updateBundle: "💾 Update Bundle",
+    searchPlaceholder: "🔍 Search barcode, pallet or supplier",
+    thPallet: "Pallet",
+    thSpeciesSupplier: "Species / Supplier",
+    thBarcodeBundle: "Barcode / Bundle",
+    thLenWidSheets: "Len × Wid × Sheets",
+    thActions: "Actions",
+    grandTotal: "GRAND TOTAL:",
+    deleteLast: "Delete Last",
+    exportData: "Export Data",
+    reportSummary: "Report Summary",
+    newPallet: "New Pallet",
+    clearAll: "Clear All Records",
+    modalTitle: "Export Tally Report",
+    modalSub: "Ready for Excel, Google Sheets, or Sharing:",
+    copyClipboard: "COPY FORMATTED DATA TO CLIPBOARD",
+    shareReport: "SHARE REPORT (WhatsApp / Email / Drive)",
+    closeWindow: "Close Window",
+    editBtn: "Edit",
+    delBtn: "Del"
+  },
+  vi: {
+    appTitle: "VeneerTally Pro",
+    mainHeader: "🌿 VeneerTally Pro",
+    palletDisplay: "Pallet hiện tại: ",
+    totalBundles: "Tổng số bó: ",
+    storageStatus: "Động cơ kép TIMBERplus + OCR nhãn đang hoạt động",
+    palletNum: "Số Pallet",
+    companyName: "Công ty / Nhà cung cấp",
+    companyPlaceholder: "Tên nhà cung cấp",
+    veneerSpecie: "Loại Gỗ Lạng",
+    speciePlaceholder: "vd. Mapa Burl / Ebony / Oak",
+    startScan: "BẮT ĐẦU QUÉT CAMERA TỐC ĐỘ CAO",
+    stopScan: "DỪNG CAMERA",
+    instantSnap: "CHỤP NHANH (MÃ VẠCH + VĂN BẢN)",
+    toggleFlash: "BẬT/TẮT ĐÈN FLASH",
+    cameraHint: "Đưa toàn bộ tem trắng vào khung đứt nét để quét mã vạch và thông số D/R/S.",
+    takePhotoScan: "CHỤP ẢNH ĐỂ QUÉT (DỰ PHÒNG)",
+    barcodeLabel: "Mã vạch / ID (TIMBERplus / SF / QY)",
+    barcodePlaceholder: "Quét hoặc nhập mã vạch",
+    bundleNum: "Số Bó",
+    length: "Chiều dài (cm)",
+    width: "Chiều rộng (cm)",
+    sheets: "Số tờ",
+    addBundle: "Thêm Bó vào Bảng Kê",
+    updateBundle: "💾 Cập Nhật Bó",
+    searchPlaceholder: "🔍 Tìm kiếm mã vạch, pallet hoặc nhà cung cấp",
+    thPallet: "Pallet",
+    thSpeciesSupplier: "Loại gỗ / Nhà cung cấp",
+    thBarcodeBundle: "Mã vạch / Bó",
+    thLenWidSheets: "Dài × Rộng × Tờ",
+    thActions: "Thao tác",
+    grandTotal: "TỔNG CỘNG:",
+    deleteLast: "Xóa Mục Cuối",
+    exportData: "Xuất Dữ Liệu",
+    reportSummary: "Tóm Tắt Báo Cáo",
+    newPallet: "Pallet Mới",
+    clearAll: "Xóa Tất Cả Bản Ghi",
+    modalTitle: "Xuất Báo Cáo Bảng Kê",
+    modalSub: "Sẵn sàng cho Excel, Google Sheets hoặc Chia sẻ:",
+    copyClipboard: "SAO CHÉP DỮ LIỆU ĐÃ ĐỊNH DẠNG",
+    shareReport: "CHIA SẺ BÁO CÁO (WhatsApp / Email / Drive)",
+    closeWindow: "Đóng Cửa Sổ",
+    editBtn: "Sửa",
+    delBtn: "Xóa"
+  },
+  zh: {
+    appTitle: "VeneerTally Pro",
+    mainHeader: "🌿 VeneerTally Pro",
+    palletDisplay: "当前卡板: ",
+    totalBundles: "总捆数: ",
+    storageStatus: "TIMBERplus + 标签OCR双引擎已激活",
+    palletNum: "卡板编号",
+    companyName: "公司 / 供应商",
+    companyPlaceholder: "供应商名称",
+    veneerSpecie: "木皮树种",
+    speciePlaceholder: "例如: 树瘤 / 乌木 / 橡木",
+    startScan: "启动高速相机扫描",
+    stopScan: "停止相机",
+    instantSnap: "立即快照 (条形码 + 文本)",
+    toggleFlash: "切换闪光灯",
+    cameraHint: "将完整白色标签对准虚线框，以同时捕获条形码和长/宽/张数。",
+    takePhotoScan: "拍照扫描 (备用)",
+    barcodeLabel: "条形码 / ID (TIMBERplus / SF / QY)",
+    barcodePlaceholder: "扫描或输入条形码",
+    bundleNum: "捆号",
+    length: "长度 (cm)",
+    width: "宽度 (cm)",
+    sheets: "张数",
+    addBundle: "添加捆数到统计",
+    updateBundle: "💾 更新捆数",
+    searchPlaceholder: "🔍 搜索条形码、卡板或供应商",
+    thPallet: "卡板",
+    thSpeciesSupplier: "树种 / 供应商",
+    thBarcodeBundle: "条形码 / 捆号",
+    thLenWidSheets: "长 × 宽 × 张数",
+    thActions: "操作",
+    grandTotal: "总计:",
+    deleteLast: "删除最后一条",
+    exportData: "导出数据",
+    reportSummary: "报告摘要",
+    newPallet: "新卡板",
+    clearAll: "清除所有记录",
+    modalTitle: "导出统计报告",
+    modalSub: "适用于 Excel、Google Sheets 或分享：",
+    copyClipboard: "复制格式化数据到剪贴板",
+    shareReport: "分享报告 (WhatsApp / 电子邮件 / 云端硬盘)",
+    closeWindow: "关闭窗口",
+    editBtn: "编辑",
+    delBtn: "删除"
+  },
+  ja: {
+    appTitle: "VeneerTally Pro",
+    mainHeader: "🌿 VeneerTally Pro",
+    palletDisplay: "現在のパレット: ",
+    totalBundles: "合計束数: ",
+    storageStatus: "TIMBERplus + ラベルOCR デュアルエンジン有効",
+    palletNum: "パレット番号",
+    companyName: "会社 / サプライヤー",
+    companyPlaceholder: "サプライヤー名",
+    veneerSpecie: "ツキ板樹種",
+    speciePlaceholder: "例: バーチ / 黒檀 / オーク",
+    startScan: "高速カメラスキャナー開始",
+    stopScan: "カメラ停止",
+    instantSnap: "インスタントスナップ (バーコード + テキスト)",
+    toggleFlash: "フラッシュ切り替え",
+    cameraHint: "バーコードと寸法が両方入るように白いステッカーを破線枠内に合わせてください。",
+    takePhotoScan: "写真を撮ってスキャン (予備)",
+    barcodeLabel: "バーコード / ID (TIMBERplus / SF / QY)",
+    barcodePlaceholder: "バーコードをスキャンまたは入力",
+    bundleNum: "束番号",
+    length: "長さ (cm)",
+    width: "幅 (cm)",
+    sheets: "枚数",
+    addBundle: "集計に束を追加",
+    updateBundle: "💾 束を更新",
+    searchPlaceholder: "🔍 バーコード、パレット、サプライヤーを検索",
+    thPallet: "パレット",
+    thSpeciesSupplier: "樹種 / サプライヤー",
+    thBarcodeBundle: "バーコード / 束",
+    thLenWidSheets: "長 × 幅 × 枚数",
+    thActions: "操作",
+    grandTotal: "総計:",
+    deleteLast: "最後の項目を削除",
+    exportData: "データエクスポート",
+    reportSummary: "レポート概要",
+    newPallet: "新しいパレット",
+    clearAll: "全レコードをクリア",
+    modalTitle: "集計レポートのエクスポート",
+    modalSub: "Excel、Googleスプレッドシート、または共有の準備完了:",
+    copyClipboard: "クリップボードにデータをコピー",
+    shareReport: "レポートを共有 (WhatsApp / メール / ドライブ)",
+    closeWindow: "ウィンドウを閉じる",
+    editBtn: "編集",
+    delBtn: "削除"
+  },
+  ko: {
+    appTitle: "VeneerTally Pro",
+    mainHeader: "🌿 VeneerTally Pro",
+    palletDisplay: "현재 파레트: ",
+    totalBundles: "총 번들수: ",
+    storageStatus: "TIMBERplus + 라벨 OCR 듀얼 엔진 활성화됨",
+    palletNum: "파레트 번호",
+    companyName: "회사 / 공급업체",
+    companyPlaceholder: "공급업체 이름",
+    veneerSpecie: "무늬목 수종",
+    speciePlaceholder: "예: 버블 / 흑단 / 오크",
+    startScan: "고속 카메라 스캐너 시작",
+    stopScan: "카메라 중지",
+    instantSnap: "즉시 촬영 (바코드 + 텍스트)",
+    toggleFlash: "플래시 토글",
+    cameraHint: "점선 상자 안에 흰색 스티커 전체가 들어가도록 하여 바코드와 규격이 모두 잡히게 하세요.",
+    takePhotoScan: "사진 촬영하여 스캔 (백업)",
+    barcodeLabel: "바코드 / ID (TIMBERplus / SF / QY)",
+    barcodePlaceholder: "바코드 스캔 또는 입력",
+    bundleNum: "번들 번호",
+    length: "길이 (cm)",
+    width: "너비 (cm)",
+    sheets: "매수",
+    addBundle: "집계에 번들 추가",
+    updateBundle: "💾 번들 수정",
+    searchPlaceholder: "🔍 바코드, 파레트 또는 공급업체 검색",
+    thPallet: "파레트",
+    thSpeciesSupplier: "수종 / 공급업체",
+    thBarcodeBundle: "바코드 / 번들",
+    thLenWidSheets: "길이 × 너비 × 매수",
+    thActions: "작업",
+    grandTotal: "총합계:",
+    deleteLast: "마지막 삭제",
+    exportData: "데이터 내보내기",
+    reportSummary: "보고서 요약",
+    newPallet: "새 파레트",
+    clearAll: "모든 기록 지우기",
+    modalTitle: "집계 보고서 내보내기",
+    modalSub: "Excel, Google 스프레드시트 또는 공유 준비 완료:",
+    copyClipboard: "클립보드에 데이터 복사",
+    shareReport: "보고서 공유 (WhatsApp / 이메일 / 드라이브)",
+    closeWindow: "창 닫기",
+    editBtn: "수정",
+    delBtn: "삭제"
+  }
+};
+
+function changeLanguage(lang){
+  if(!translations[lang]) lang = "en";
+  currentLang = lang;
+  try{ localStorage.setItem(STORAGE_KEY+"_lang", lang); }catch(e){}
+  
+  const t = translations[lang];
+  document.getElementById("appTitle").textContent = t.appTitle;
+  document.getElementById("lblMainHeader").textContent = t.mainHeader;
+  document.getElementById("lblPalletNum").textContent = t.palletNum;
+  document.getElementById("lblCompanyName").textContent = t.companyName;
+  document.getElementById("companyName").placeholder = t.companyPlaceholder;
+  document.getElementById("lblVeneerSpecie").textContent = t.veneerSpecie;
+  document.getElementById("veneerSpecie").placeholder = t.speciePlaceholder;
+  document.getElementById("lblStartScan").textContent = t.startScan;
+  document.getElementById("lblStopScan").textContent = t.stopScan;
+  document.getElementById("lblInstantSnap").textContent = t.instantSnap;
+  document.getElementById("lblToggleFlash").textContent = t.toggleFlash;
+  document.getElementById("lblCameraHint").textContent = t.cameraHint;
+  document.getElementById("lblTakePhoneScan").textContent = t.takePhotoScan;
+  document.getElementById("lblBarcodeLabel").textContent = t.barcodeLabel;
+  document.getElementById("barcode").placeholder = t.barcodePlaceholder;
+  document.getElementById("lblBundleNum").textContent = t.bundleNum;
+  document.getElementById("lblLength").textContent = t.length;
+  document.getElementById("lblWidth").textContent = t.width;
+  document.getElementById("lblSheets").textContent = t.sheets;
+  
+  const saveBtn = document.getElementById("saveBtn");
+  if(editingBarcode !== null){
+    saveBtn.innerHTML = '💾 <span id="lblUpdateBundle">' + t.updateBundle.replace('💾 ','') + '</span>';
+  } else {
+    saveBtn.innerHTML = '➕ <span id="lblAddBundle">' + t.addBundle + '</span>';
+  }
+  
+  document.getElementById("searchFilter").placeholder = t.searchPlaceholder;
+  document.getElementById("thPallet").textContent = t.thPallet;
+  document.getElementById("thSpeciesSupplier").textContent = t.thSpeciesSupplier;
+  document.getElementById("thBarcodeBundle").textContent = t.thBarcodeBundle;
+  document.getElementById("thLenWidSheets").textContent = t.thLenWidSheets;
+  document.getElementById("thActions").textContent = t.thActions;
+  document.getElementById("lblGrandTotal").textContent = t.grandTotal;
+  
+  document.getElementById("lblDeleteLast").textContent = t.deleteLast;
+  document.getElementById("lblExportData").textContent = t.exportData;
+  document.getElementById("lblReportSummary").textContent = t.reportSummary;
+  document.getElementById("lblNewPallet").textContent = t.newPallet;
+  document.getElementById("lblClearAll").textContent = t.clearAll;
+  
+  document.getElementById("modalTitle").textContent = t.modalTitle;
+  document.getElementById("lblModalSub").textContent = t.modalSub;
+  document.getElementById("lblCopyClipboard").textContent = t.copyClipboard;
+  document.getElementById("lblShareReport").textContent = t.shareReport;
+  document.getElementById("lblCloseWindow").textContent = t.closeWindow;
+  
+  updateTotals();
+  renderTable();
+}
 
 function getValue(id){ return document.getElementById(id).value.trim(); }
 function setValue(id,value){ document.getElementById(id).value=value; }
@@ -792,6 +1089,12 @@ document.getElementById("storageStatus").textContent="Records saved locally";
 
 function loadData(){
 try{
+const savedLang = localStorage.getItem(STORAGE_KEY+"_lang");
+if(savedLang && translations[savedLang]){
+  currentLang = savedLang;
+  document.getElementById("langSelect").value = savedLang;
+}
+
 const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]");
 if(Array.isArray(saved)){
 items=saved.map(i=>({...i, area:calculateArea(Number(i.length),Number(i.width),Number(i.sheets))}));
@@ -815,6 +1118,7 @@ const len=Number(document.getElementById("length").value);
 const wid=Number(document.getElementById("width").value);
 const sheets=Number(document.getElementById("sheets").value);
 
+const t = translations[currentLang];
 if(!code){ showMessage("Enter or scan a barcode.",true); return; }
 if(!Number.isFinite(len)||len<=0||!Number.isFinite(wid)||wid<=0||!Number.isInteger(sheets)||sheets<=0){
 showMessage("Enter valid dimensions.",true); return;
@@ -840,7 +1144,8 @@ setValue("barcode",""); setValue("bundleNum",""); setValue("length",""); setValu
 
 function resetSaveButton(){
 const button=document.getElementById("saveBtn");
-button.textContent="➕ Add Bundle to Tally";
+const t = translations[currentLang];
+button.innerHTML = '➕ <span id="lblAddBundle">' + t.addBundle + '</span>';
 button.style.background="#238b57";
 }
 
@@ -856,7 +1161,8 @@ setValue("length",item.length);
 setValue("width",item.width);
 setValue("sheets",item.sheets);
 editingBarcode=code;
-document.getElementById("saveBtn").textContent="💾 Update Bundle";
+const t = translations[currentLang];
+document.getElementById("saveBtn").innerHTML = '💾 <span id="lblUpdateBundle">' + t.updateBundle.replace('💾 ','') + '</span>';
 document.getElementById("saveBtn").style.background="#c97816";
 }
 
@@ -878,6 +1184,7 @@ const query=getValue("searchFilter").toLowerCase();
 body.replaceChildren();
 const filtered=items.filter(i=>[i.pallet,i.company,i.specie,i.barcode,i.bundle].join(" ").toLowerCase().includes(query));
 
+const t = translations[currentLang];
 filtered.forEach(item=>{
 const row=document.createElement("tr");
 [item.pallet, item.specie, item.barcode, item.length+"×"+item.width+"×"+item.sheets, item.area.toFixed(2)].forEach((val)=>{
@@ -887,9 +1194,9 @@ row.appendChild(cell);
 });
 const actions=document.createElement("td");
 const edit=document.createElement("button");
-edit.className="btn-action btn-row-edit"; edit.textContent="Edit"; edit.onclick=()=>editItem(item.barcode);
+edit.className="btn-action btn-row-edit"; edit.textContent=t.editBtn; edit.onclick=()=>editItem(item.barcode);
 const del=document.createElement("button");
-del.className="btn-action btn-row-del"; del.textContent="Del"; del.onclick=()=>deleteItem(item.barcode);
+del.className="btn-action btn-row-del"; del.textContent=t.delBtn; del.onclick=()=>deleteItem(item.barcode);
 actions.append(edit,del);
 row.appendChild(actions);
 body.appendChild(row);
@@ -898,9 +1205,10 @@ body.appendChild(row);
 
 function updateTotals(){
 const total=items.reduce((sum,i)=>sum+i.area,0);
-document.getElementById("palletDisplay").textContent="Current Pallet: "+(getValue("palletNum")||"Pallet 01");
+const t = translations[currentLang];
+document.getElementById("palletDisplay").textContent=t.palletDisplay+(getValue("palletNum")||"Pallet 01");
 document.getElementById("totalM2").textContent=total.toFixed(2)+" m²";
-document.getElementById("totalBundles").textContent="Total Bundles: "+items.length;
+document.getElementById("totalBundles").textContent=t.totalBundles+items.length;
 document.getElementById("tableGrandTotal").textContent=total.toFixed(2)+" m²";
 }
 
@@ -930,7 +1238,8 @@ return csvRows.join("\n");
 
 function exportExcel(){
 if(!items.length){ alert("No items to export."); return; }
-document.getElementById("modalTitle").textContent = "📊 Export Excel / Spreadsheet Data";
+const t = translations[currentLang];
+document.getElementById("modalTitle").textContent = t.modalTitle;
 document.getElementById("csvPreview").value = getCSVString();
 document.getElementById("exportModal").style.display="block";
 }
@@ -950,7 +1259,8 @@ const total = items.reduce((sum,i)=>sum+i.area,0);
 summary += "\n----------------------------------------\n";
 summary += `GRAND TOTAL: ${total.toFixed(2)} m² (${items.length} Bundles)\n`;
 
-document.getElementById("modalTitle").textContent = "📄 Printable Report Summary";
+const t = translations[currentLang];
+document.getElementById("modalTitle").textContent = t.modalTitle;
 document.getElementById("csvPreview").value = summary;
 document.getElementById("exportModal").style.display="block";
 }
@@ -987,7 +1297,10 @@ return;
 copyCSVToClipboard();
 }
 
-loadData(); renderTable(); updateTotals();
+loadData(); 
+changeLanguage(currentLang);
+renderTable(); 
+updateTotals();
 </script>
 </body>
 </html>
