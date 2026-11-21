@@ -900,6 +900,36 @@ return new Promise((resolve) => {
 });
 }
 
+function getUserMediaWithTimeout(constraints, timeoutMs = 4000){
+return new Promise((resolve, reject) => {
+  let settled = false;
+  const timer = setTimeout(() => {
+    if(!settled){
+      settled = true;
+      reject(new Error("CameraTimeoutError"));
+    }
+  }, timeoutMs);
+
+  navigator.mediaDevices.getUserMedia(constraints)
+    .then((stream) => {
+      if(!settled){
+        settled = true;
+        clearTimeout(timer);
+        resolve(stream);
+      } else {
+        stream.getTracks().forEach(t => { try{ t.stop(); }catch(e){} });
+      }
+    })
+    .catch((err) => {
+      if(!settled){
+        settled = true;
+        clearTimeout(timer);
+        reject(err || new Error("CameraUnknownError"));
+      }
+    });
+});
+}
+
 async function startCameraScanner(){
 const panel=document.getElementById("cameraPanel");
 const video=document.getElementById("cameraVideo");
@@ -935,9 +965,10 @@ const constraintSets = [
 let stream = null;
 let lastErr = null;
 
-for(const constraints of constraintSets){
+for(let i = 0; i < constraintSets.length; i++){
   try{
-    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    setStreamInfo("Opening lens (attempt " + (i + 1) + "/" + constraintSets.length + ")...");
+    stream = await getUserMediaWithTimeout(constraintSets[i], 3500);
     if(stream) break;
   }catch(err){
     lastErr = err;
@@ -947,13 +978,30 @@ for(const constraints of constraintSets){
   }
 }
 
+// Explicit deviceId fallback if facingMode timed out on custom Android WebView
+if(!stream && navigator.mediaDevices.enumerateDevices){
+  try{
+    setStreamInfo("Scanning available camera hardware...");
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const videoInputs = devices.filter(d => d.kind === "videoinput");
+    const rearCam = videoInputs.find(d => /back|rear|environment/i.test(d.label)) || videoInputs[videoInputs.length - 1];
+    if(rearCam && rearCam.deviceId){
+      stream = await getUserMediaWithTimeout({ audio: false, video: { deviceId: { exact: rearCam.deviceId } } }, 3500);
+    }
+  }catch(err){
+    lastErr = err;
+  }
+}
+
 if(!stream){
   stopCameraScanner();
-  const errName = (lastErr && lastErr.name) || "UnknownError";
+  const errName = (lastErr && (lastErr.name || lastErr.message)) || "UnknownError";
   if(errName === "NotAllowedError" || errName === "PermissionDeniedError"){
-    showMessage("Permission denied (" + errName + "). Enable Camera in phone App Info or APK settings.", true);
+    showMessage("Permission denied (" + errName + "). Enable Camera in phone App Info or open in Chrome.", true);
   } else if(errName === "NotReadableError" || errName === "TrackStartError"){
-    showMessage("Camera in use by another app (" + errName + "). Close other camera apps & retry.", true);
+    showMessage("Camera busy/locked (" + errName + "). Close other camera apps & retry.", true);
+  } else if(errName === "CameraTimeoutError"){
+    showMessage("Camera request timed out. Open link directly in Chrome or allow WebView camera permission.", true);
   } else {
     showMessage("Phone camera failed (" + errName + "). Use 'Take Photo to Scan' backup.", true);
   }
