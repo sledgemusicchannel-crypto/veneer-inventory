@@ -185,10 +185,10 @@ th,td{border:1px solid #888}
 </button>
 
 <div id="cameraPanel" style="display:none;margin-top:8px;background:#07110d;padding:8px;border-radius:8px">
-<div class="scan-region-box" onclick="triggerMacroRefocus()" title="Tap to re-focus close-up">
+<div class="scan-region-box" onclick="handleVideoBoxTap()" title="Tap to re-focus close-up">
   <div id="scanGuideFrame" class="scan-guide-frame"></div>
   <div class="scan-reticle"></div>
-  <video id="cameraVideo" playsinline muted autoplay style="width:100%;max-height:320px;object-fit:cover;background:#000"></video>
+  <video id="cameraVideo" playsinline webkit-playsinline muted autoplay style="width:100%;max-height:320px;object-fit:cover;background:#000"></video>
 </div>
 
 <div class="row" style="margin-top:6px">
@@ -755,7 +755,6 @@ function captureSharpROI(sourceEl, fullFrame = false){
 const srcW = sourceEl.videoWidth || sourceEl.naturalWidth || 1280;
 const srcH = sourceEl.videoHeight || sourceEl.naturalHeight || 720;
 
-// Crop strictly to the center reticle box (88% width x 48% height) for ultra-fast decoding
 const cropW = fullFrame ? srcW : Math.round(srcW * 0.88);
 const cropH = fullFrame ? srcH : Math.round(srcH * 0.48);
 const cropX = fullFrame ? 0 : Math.round((srcW - cropW) / 2);
@@ -765,12 +764,10 @@ roiCanvas.width = cropW;
 roiCanvas.height = cropH;
 roiCtx.drawImage(sourceEl, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
-// Fast native pixel contrast stretch (no slow CSS filter overhead)
 const imgData = roiCtx.getImageData(0, 0, cropW, cropH);
 const data = imgData.data;
 for(let i = 0; i < data.length; i += 4){
   const luma = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-  // Stretch contrast around midpoint 128 for crisp barcode edges
   let enhanced = (luma - 128) * 1.65 + 128;
   enhanced = enhanced < 0 ? 0 : (enhanced > 255 ? 255 : enhanced);
   data[i] = data[i + 1] = data[i + 2] = enhanced;
@@ -841,17 +838,23 @@ try{
     adv.focusMode = "continuous";
   }
   if(caps.focusDistance && typeof caps.focusDistance.min === "number"){
-    // Bias slightly above minimum macro distance for 8-20cm sticker scanning
     adv.focusDistance = Math.min(caps.focusDistance.max, caps.focusDistance.min + 0.08);
   }
   if(caps.zoom){
-    // Slight 1.35x optical/sensor crop brings barcodes closer without pixelation
     adv.zoom = Math.min(caps.zoom.max, Math.max(caps.zoom.min || 1, 1.35));
   }
   if(Object.keys(adv).length > 0){
     await track.applyConstraints({ advanced: [adv] });
   }
 }catch(e){}
+}
+
+async function handleVideoBoxTap(){
+const video = document.getElementById("cameraVideo");
+if(video && video.paused){
+  try{ await video.play(); }catch(e){}
+}
+await triggerMacroRefocus();
 }
 
 async function triggerMacroRefocus(){
@@ -870,15 +873,21 @@ try{
 }catch(e){}
 }
 
-/* BULLETPROOF HIGH-SPEED CAMERA INITIALIZATION */
+/* BULLETPROOF MOBILE & WEBVIEW CAMERA INITIALIZATION */
 async function startCameraScanner(){
 const panel=document.getElementById("cameraPanel");
 const video=document.getElementById("cameraVideo");
 const guide=document.getElementById("scanGuideFrame");
 if(guide) guide.classList.remove("locked");
 
+if(!window.isSecureContext && location.hostname !== "localhost" && location.hostname !== "127.0.0.1"){
+  showMessage("Phone camera requires HTTPS (https://). Current URL is not secure.", true);
+  playBeep(true);
+  return;
+}
+
 if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-  showMessage("Camera API requires HTTPS or localhost. Use 'Take Photo to Scan'.", true);
+  showMessage("Camera API unavailable on this phone browser. Use 'Take Photo to Scan'.", true);
   playBeep(true);
   return;
 }
@@ -890,54 +899,51 @@ document.getElementById("startScanBtn").style.display="none";
 document.getElementById("stopScanBtn").style.display="block";
 scanBusy=false;
 
-// Progressive fallback constraints so camera NEVER fails to open on Android/WebView
 const constraintSets = [
-  {
-    audio: false,
-    video: {
-      facingMode: { ideal: "environment" },
-      width: { ideal: 1280 },
-      height: { ideal: 720 },
-      frameRate: { ideal: 30 }
-    }
-  },
-  {
-    audio: false,
-    video: { facingMode: "environment" }
-  },
-  {
-    audio: false,
-    video: true
-  }
+  { audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+  { audio: false, video: { facingMode: "environment" } },
+  { audio: false, video: true }
 ];
 
 let stream = null;
 let lastErr = null;
+
 for(const constraints of constraintSets){
   try{
     stream = await navigator.mediaDevices.getUserMedia(constraints);
     if(stream) break;
   }catch(err){
     lastErr = err;
+    if(err && (err.name === "NotAllowedError" || err.name === "PermissionDeniedError" || err.name === "NotFoundError")){
+      break;
+    }
   }
 }
 
 if(!stream){
   stopCameraScanner();
-  const reason = lastErr && lastErr.name ? " (" + lastErr.name + ")" : "";
-  showMessage("Camera blocked or unavailable" + reason + ". Allow camera permission or use Photo Backup.", true);
+  const errName = (lastErr && lastErr.name) || "UnknownError";
+  if(errName === "NotAllowedError" || errName === "PermissionDeniedError"){
+    showMessage("Permission denied (" + errName + "). Enable Camera in phone App Info or APK settings.", true);
+  } else if(errName === "NotReadableError" || errName === "TrackStartError"){
+    showMessage("Camera in use by another app (" + errName + "). Close other camera apps & retry.", true);
+  } else {
+    showMessage("Phone camera failed (" + errName + "). Use 'Take Photo to Scan' backup.", true);
+  }
   playBeep(true);
   return;
 }
 
 cameraStream = stream;
 video.srcObject = cameraStream;
+video.setAttribute("playsinline", "");
+video.setAttribute("webkit-playsinline", "");
+video.muted = true;
 
 try{
   await video.play();
 }catch(e){
-  video.muted = true;
-  await video.play();
+  showMessage("Tap inside the camera box to start video preview.", true);
 }
 
 const track = cameraStream.getVideoTracks()[0];
@@ -948,7 +954,6 @@ if(track){
   }
 }
 
-// Initialize Native BarcodeDetector if available
 if("BarcodeDetector" in window){
   try{
     nativeDetector = new BarcodeDetector({
@@ -959,7 +964,6 @@ if("BarcodeDetector" in window){
   }
 }
 
-// Initialize ZXing Fallback Reader
 if(window.ZXing){
   const hints = new Map();
   hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
@@ -988,7 +992,6 @@ const tick = async () => {
   if(video.readyState >= 2 && video.videoWidth > 0){
     frameCounter++;
     try{
-      // 1. Direct hardware scan on raw video frame (0ms copy overhead)
       if(nativeDetector){
         const rawCodes = await nativeDetector.detect(video);
         if(rawCodes && rawCodes.length && !scanBusy){
@@ -1001,7 +1004,6 @@ const tick = async () => {
         }
       }
 
-      // 2. Every 2nd frame: Crop to center reticle + contrast sharpen for close-up/glare labels
       if(frameCounter % 2 === 0){
         const sharpROI = captureSharpROI(video, false);
 
@@ -1015,7 +1017,6 @@ const tick = async () => {
             return;
           }
         } else if(zxingReader){
-          // ZXing decode from sharpened ROI canvas
           const luminanceSource = new ZXing.HTMLCanvasElementLuminanceSource(sharpROI);
           const binaryBitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminanceSource));
           const res = zxingReader.decodeBitmap(binaryBitmap);
