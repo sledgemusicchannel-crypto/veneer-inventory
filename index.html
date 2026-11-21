@@ -76,7 +76,6 @@ small{color:#596970}
 .modal-content{max-width:500px;margin:30px auto;background:#293c44;padding:16px;border-radius:10px;border:1px solid #53666e;text-align:left}
 .footer-note{text-align:center;color:#b9c7cb;font-size:11px;margin:16px 0 8px 0}
 
-/* Urovo-Style Laser Viewport + Dashed Label Box */
 .scan-region-box {
   position: relative;
   overflow: hidden;
@@ -328,6 +327,7 @@ const SETTINGS_KEY="veneerTallyPro_settings_v13";
 let items=[];
 let editingBarcode=null;
 let currentLang="en";
+let scanSessionId=0;
 
 const translations = {
   en: {
@@ -585,9 +585,9 @@ function changeLanguage(lang){
   
   const saveBtn = document.getElementById("saveBtn");
   if(editingBarcode !== null){
-    saveBtn.innerHTML = '💾 <span id="lblUpdateBundle">' + t.updateBundle.replace('💾 ','') + '</span>';
+    saveBtn.innerHTML = '💾 <span>' + t.updateBundle.replace(/^💾\s*/,'') + '</span>';
   } else {
-    saveBtn.innerHTML = '➕ <span id="lblAddBundle">' + t.addBundle + '</span>';
+    saveBtn.innerHTML = '➕ <span>' + t.addBundle + '</span>';
   }
   
   document.getElementById("searchFilter").placeholder = t.searchPlaceholder;
@@ -658,7 +658,6 @@ if(navigator.vibrate) navigator.vibrate(error?[180,80,180]:120);
 }
 }
 
-/* PRESERVE EXACT DIMENSIONS (INCLUDING 335cm, 385cm, 18.5cm, 12.5cm) */
 function cleanDim(val){
 let n = Number(val);
 if(!Number.isFinite(n) || n <= 0) return null;
@@ -668,7 +667,6 @@ if(n >= 600){
 return Math.round(n * 100) / 100;
 }
 
-/* UNIVERSAL PARSER FOR TIMBERplus, SF, QY & PRINTED LABEL FORMATS */
 function parseVeneerBarcode(raw){
 const text=String(raw||"").trim();
 const norm=text.replace(/[,;|]/g," ").replace(/\s+/g," ");
@@ -682,7 +680,6 @@ if(qyMatch){
   result.bundle = sfMatch[1] + "-" + sfMatch[2];
 }
 
-// 1. Format A ("L 335  W 18.5  P 24  14.87 m²")
 const lwpMatch = norm.match(/\bL\s*[:= -]?\s*(\d{2,4}(?:\.\d+)?)\s+W\s*[:= -]?\s*(\d{1,3}(?:\.\d+)?)\s+(?:P|S|SHT|PCS)\s*[:= -]?\s*(\d{1,3})\b/i);
 if(lwpMatch){
   result.length = cleanDim(lwpMatch[1]);
@@ -692,7 +689,6 @@ if(lwpMatch){
   if(result.length && result.width && result.sheets > 0) return result;
 }
 
-// 2. Format B ("235 LEN  19 WIDE  14 SHT  6.25 SM")
 const lenMatch = norm.match(/(\d+(?:\.\d+)?)\s*(?:LEN(?:GTH)?)\b/i) || norm.match(/\b(?:LEN(?:GTH)?|L)\s*[:= -]?\s*(\d+(?:\.\d+)?)/i);
 const widMatch = norm.match(/(\d+(?:\.\d+)?)\s*(?:WID(?:E|TH)?)\b/i) || norm.match(/\b(?:WID(?:E|TH)?|W)\s*[:= -]?\s*(\d+(?:\.\d+)?)/i);
 const shtMatch = norm.match(/(\d+)\s*(?:SHT|SHEETS?|PCS|P)\b/i) || norm.match(/\b(?:SHT|SHEETS?|PCS|P)\s*[:= -]?\s*(\d+)\b/i);
@@ -705,7 +701,6 @@ if(lenMatch && widMatch && shtMatch){
   if(result.length && result.width && result.sheets > 0) return result;
 }
 
-// 3. Delimited 3-number sequence (e.g., "235x19x14", "335*18.5*24")
 const seqMatch = norm.match(/\b(\d{2,4}(?:\.\d+)?)\s*[xX×*\/\- ]\s*(\d{1,3}(?:\.\d+)?)\s*[xX×*\/\- ]\s*(\d{1,3})\b/);
 if(seqMatch){
   const l = cleanDim(seqMatch[1]);
@@ -720,7 +715,6 @@ if(seqMatch){
   }
 }
 
-// 4. TIMBERplus / BSS Numeric Barcode String
 const digits = text.replace(/\D/g,"");
 if(digits.length >= 16 && digits.length <= 24){
   const len = cleanDim(digits.slice(7, 10));
@@ -764,7 +758,6 @@ try{
 }
 }
 
-/* HIGH-SPEED ROI CROP + LUMINANCE CONTRAST BOOST */
 const roiCanvas = document.createElement("canvas");
 const roiCtx = roiCanvas.getContext("2d", { willReadFrequently: true });
 
@@ -840,7 +833,6 @@ if(parsed.length !== null){
 document.getElementById("length").focus();
 }
 
-/* HARDWARE SCANNER LISTENER (UROVO / TITAN 2) */
 document.getElementById("barcode").addEventListener("keydown", function(e){
 if(e.key === "Enter" || e.key === "Tab"){
 e.preventDefault();
@@ -870,7 +862,6 @@ function formatCameraError(err){
   return base + " [secure=" + String(window.isSecureContext) + "]";
 }
 
-/* MACRO / CLOSE-UP FOCUS BOOSTER */
 async function applyMacroFocus(track){
 if(!track || !track.getCapabilities) return;
 try{
@@ -879,11 +870,9 @@ try{
   if(caps.focusMode && caps.focusMode.includes("continuous")){
     adv.focusMode = "continuous";
   }
-  if(caps.focusDistance && typeof caps.focusDistance.min === "number"){
-    adv.focusDistance = Math.min(caps.focusDistance.max, caps.focusDistance.min + 0.08);
-  }
-  if(caps.zoom){
-    adv.zoom = Math.min(caps.zoom.max, Math.max(caps.zoom.min || 1, 1.35));
+  if(caps.zoom && typeof caps.zoom.min === "number" && typeof caps.zoom.max === "number"){
+    const targetZoom = Math.min(caps.zoom.max, Math.max(caps.zoom.min, 1.25));
+    if(targetZoom > caps.zoom.min) adv.zoom = targetZoom;
   }
   if(Object.keys(adv).length > 0){
     await track.applyConstraints({ advanced: [adv] });
@@ -893,7 +882,7 @@ try{
 
 async function handleVideoBoxTap(){
 const video = document.getElementById("cameraVideo");
-if(video){
+if(video && video.paused){
   try{ await video.play(); }catch(e){}
 }
 await triggerMacroRefocus();
@@ -905,17 +894,14 @@ const track = cameraStream.getVideoTracks()[0];
 if(!track || !track.getCapabilities) return;
 try{
   const caps = track.getCapabilities();
-  if(caps.focusMode){
-    if(caps.focusMode.includes("single-shot")){
-      await track.applyConstraints({ advanced: [{ focusMode: "single-shot" }] });
-    }
-    setTimeout(() => applyMacroFocus(track), 250);
+  if(caps.focusMode && caps.focusMode.includes("continuous")){
+    await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] });
+    showMessage("Re-focusing close-up...");
   }
-  showMessage("Re-focusing close-up...");
 }catch(e){}
 }
 
-function waitForVideoReady(video, timeoutMs = 3000){
+function waitForVideoReady(video, timeoutMs = 4500){
 return new Promise((resolve) => {
   if(video.readyState >= 2 && video.videoWidth > 0){
     resolve(true);
@@ -931,13 +917,13 @@ return new Promise((resolve) => {
     resolve(ok);
   };
   const onReady = () => finish(true);
-  const timer = setTimeout(() => finish(false), timeoutMs);
+  const timer = setTimeout(() => finish(video.readyState >= 2), timeoutMs);
   video.addEventListener("loadedmetadata", onReady, { once: true });
   video.addEventListener("canplay", onReady, { once: true });
 });
 }
 
-function getUserMediaWithTimeout(constraints, timeoutMs = 8000){
+function getUserMediaWithTimeout(constraints, timeoutMs = 10000){
 return new Promise((resolve, reject) => {
   let settled = false;
   const timer = setTimeout(() => {
@@ -988,8 +974,8 @@ return new Promise((resolve, reject) => {
 });
 }
 
-/* HIGH-SPEED CAMERA INITIALIZATION WITH MINIMAL-FIRST FALLBACKS */
 async function startCameraScanner(){
+const mySession = ++scanSessionId;
 const panel=document.getElementById("cameraPanel");
 const video=document.getElementById("cameraVideo");
 const guide=document.getElementById("scanGuideFrame");
@@ -1001,7 +987,7 @@ if(!window.isSecureContext && location.hostname !== "localhost" && location.host
   return;
 }
 
-stopCameraScanner();
+stopCameraScanner(false);
 
 panel.style.display="block";
 document.getElementById("startScanBtn").style.display="none";
@@ -1010,18 +996,18 @@ scanBusy=false;
 setStreamInfo("Requesting rear camera...");
 
 const constraintSets = [
-  { audio: false, video: { facingMode: "environment" } },
-  { audio: false, video: true },
-  { audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } } }
+  { audio: false, video: { facingMode: { ideal: "environment" } } },
+  { audio: false, video: true }
 ];
 
 let stream = null;
 let lastErr = null;
 
 for(let i = 0; i < constraintSets.length; i++){
+  if(mySession !== scanSessionId) return;
   try{
     setStreamInfo("Opening camera (" + (i + 1) + "/" + constraintSets.length + ")...");
-    stream = await getUserMediaWithTimeout(constraintSets[i], 8000);
+    stream = await getUserMediaWithTimeout(constraintSets[i], 10000);
     if(stream) break;
   }catch(err){
     lastErr = err;
@@ -1031,23 +1017,14 @@ for(let i = 0; i < constraintSets.length; i++){
   }
 }
 
-if(!stream && navigator.mediaDevices && navigator.mediaDevices.enumerateDevices){
-  try{
-    setStreamInfo("Checking camera devices...");
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const videoInputs = devices.filter(d => d.kind === "videoinput");
-    const rearCam = videoInputs.find(d => /back|rear|environment/i.test(d.label)) || videoInputs[videoInputs.length - 1];
-    if(rearCam && rearCam.deviceId){
-      stream = await getUserMediaWithTimeout({ audio: false, video: { deviceId: rearCam.deviceId } }, 8000);
-    }
-  }catch(err){
-    lastErr = err;
-  }
+if(mySession !== scanSessionId){
+  if(stream) stream.getTracks().forEach(t => { try{ t.stop(); }catch(e){} });
+  return;
 }
 
 if(!stream){
-  stopCameraScanner();
-  showMessage("Camera failed (" + formatCameraError(lastErr) + "). Check permissions or use 'Take Photo to Scan'.", true);
+  stopCameraScanner(true);
+  showMessage("Camera failed (" + formatCameraError(lastErr) + "). Check app camera permission or use 'Take Photo to Scan'.", true);
   playBeep(true);
   return;
 }
@@ -1061,7 +1038,8 @@ video.setAttribute("playsinline", "");
 video.setAttribute("webkit-playsinline", "");
 video.muted = true;
 
-await waitForVideoReady(video, 3000);
+await waitForVideoReady(video, 4500);
+if(mySession !== scanSessionId) return;
 
 try{
   await video.play();
@@ -1070,12 +1048,16 @@ try{
   try{ await video.play(); }catch(err){}
 }
 
+if(mySession !== scanSessionId) return;
+
 const track = cameraStream.getVideoTracks()[0];
 if(track){
   await applyMacroFocus(track);
-  if(track.getCapabilities && track.getCapabilities().torch){
-    document.getElementById("torchContainer").style.display = "block";
-  }
+  try{
+    if(track.getCapabilities && track.getCapabilities().torch){
+      document.getElementById("torchContainer").style.display = "block";
+    }
+  }catch(e){}
 }
 
 setStreamInfo("Live lens: " + (video.videoWidth || "auto") + "×" + (video.videoHeight || "auto"));
@@ -1104,16 +1086,15 @@ if(window.ZXing){
   zxingReader = new ZXing.BrowserMultiFormatReader(hints);
 }
 
-runHighSpeedScanLoop();
+runHighSpeedScanLoop(mySession);
 }
 
-/* 35ms UROVO-SPEED ROI + FULL-FRAME SCAN LOOP */
-function runHighSpeedScanLoop(){
+function runHighSpeedScanLoop(sessionId){
 const video = document.getElementById("cameraVideo");
 let frameCounter = 0;
 
 const tick = async () => {
-  if(!cameraStream || scanBusy) return;
+  if(sessionId !== scanSessionId || !cameraStream || scanBusy) return;
 
   if(video.readyState >= 2 && video.videoWidth > 0){
     frameCounter++;
@@ -1123,12 +1104,13 @@ const tick = async () => {
     try{
       if(nativeDetector){
         const rawCodes = await nativeDetector.detect(video);
+        if(sessionId !== scanSessionId) return;
         if(rawCodes && rawCodes.length && !scanBusy){
           scanBusy = true;
           rawCodes.sort((a, b) => (b.rawValue || "").length - (a.rawValue || "").length);
           const sharpSnap = createSharpenedCanvasFromSource(video, video.videoWidth, video.videoHeight);
+          stopCameraScanner(true);
           await applyScannedBarcode(rawCodes[0].rawValue, sharpSnap);
-          stopCameraScanner();
           return;
         }
       }
@@ -1138,23 +1120,25 @@ const tick = async () => {
 
         if(nativeDetector){
           const roiCodes = await nativeDetector.detect(sharpROI);
+          if(sessionId !== scanSessionId) return;
           if(roiCodes && roiCodes.length && !scanBusy){
             scanBusy = true;
             roiCodes.sort((a, b) => (b.rawValue || "").length - (a.rawValue || "").length);
             const fullSnap = createSharpenedCanvasFromSource(video, video.videoWidth, video.videoHeight);
+            stopCameraScanner(true);
             await applyScannedBarcode(roiCodes[0].rawValue, fullSnap);
-            stopCameraScanner();
             return;
           }
         } else if(zxingReader){
           const luminanceSource = new ZXing.HTMLCanvasElementLuminanceSource(sharpROI);
           const binaryBitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminanceSource));
           const res = zxingReader.decodeBitmap(binaryBitmap);
+          if(sessionId !== scanSessionId) return;
           if(res && !scanBusy){
             scanBusy = true;
             const fullSnap = createSharpenedCanvasFromSource(video, video.videoWidth, video.videoHeight);
+            stopCameraScanner(true);
             await applyScannedBarcode(res.getText(), fullSnap);
-            stopCameraScanner();
             return;
           }
         }
@@ -1162,12 +1146,12 @@ const tick = async () => {
     }catch(e){}
   }
 
-  if(cameraStream && !scanBusy){
-    scanTimer = setTimeout(tick, 35);
+  if(sessionId === scanSessionId && cameraStream && !scanBusy){
+    scanTimer = setTimeout(tick, 45);
   }
 };
 
-scanTimer = setTimeout(tick, 35);
+scanTimer = setTimeout(tick, 45);
 }
 
 async function toggleTorch(){
@@ -1181,7 +1165,6 @@ if(track && track.getCapabilities && track.getCapabilities().torch){
 }
 }
 
-/* Manual Frame Capture: Scans Barcode AND Printed Label Text Simultaneously */
 async function manualCaptureFrame(){
 const video = document.getElementById("cameraVideo");
 if(!video || video.readyState < 2){
@@ -1191,8 +1174,8 @@ if(!video || video.readyState < 2){
 
 showMessage("Scanning barcode & reading printed label text...");
 try{
-  const w = video.videoWidth || 1920;
-  const h = video.videoHeight || 1080;
+  const w = video.videoWidth || 1280;
+  const h = video.videoHeight || 720;
   const roiCanvasSnap = captureSharpROI(video, false);
   const fullCanvasSnap = createSharpenedCanvasFromSource(video, w, h);
 
@@ -1217,7 +1200,7 @@ try{
     const reader = new ZXing.BrowserMultiFormatReader(hints);
     for(const cand of [roiCanvasSnap, fullCanvasSnap]){
       try{
-        const res = await reader.decodeFromImageUrl(cand.toDataURL("image/jpeg", 0.95));
+        const res = await reader.decodeFromImageUrl(cand.toDataURL("image/jpeg", 0.92));
         if(res){
           foundBarcode = res.getText ? res.getText() : res.text;
           break;
@@ -1227,8 +1210,8 @@ try{
   }
 
   if(foundBarcode){
+    stopCameraScanner(true);
     await applyScannedBarcode(foundBarcode, fullCanvasSnap);
-    stopCameraScanner();
     return;
   }
 
@@ -1236,13 +1219,13 @@ try{
   if(ocrText){
     const ocrParsed = parseVeneerBarcode(ocrText);
     if(ocrParsed.length !== null){
+      stopCameraScanner(true);
       if(ocrParsed.bundle){ setValue("barcode", ocrParsed.bundle); setValue("bundleNum", ocrParsed.bundle); }
       setValue("length", String(ocrParsed.length));
       setValue("width", String(ocrParsed.width));
       setValue("sheets", String(ocrParsed.sheets));
       showMessage("Captured via Label OCR: " + ocrParsed.length + " × " + ocrParsed.width + " × " + ocrParsed.sheets + " (" + calculateArea(ocrParsed.length, ocrParsed.width, ocrParsed.sheets) + " m²)");
       playBeep(false);
-      stopCameraScanner();
       return;
     }
   }
@@ -1255,7 +1238,8 @@ try{
 }
 }
 
-function stopCameraScanner(){
+function stopCameraScanner(incrementSession = true){
+if(incrementSession) scanSessionId++;
 torchOn = false;
 if(scanTimer){ clearTimeout(scanTimer); scanTimer = null; }
 try{ if(cameraControls && cameraControls.stop) cameraControls.stop(); }catch(e){}
@@ -1291,7 +1275,7 @@ const img=new Image();
 const imageURL=URL.createObjectURL(file);
 await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src=imageURL; });
 
-const canvas = createSharpenedCanvasFromSource(img, img.naturalWidth || 1920, img.naturalHeight || 1080);
+const canvas = createSharpenedCanvasFromSource(img, img.naturalWidth || 1280, img.naturalHeight || 720);
 
 if("BarcodeDetector" in window){
   try{
@@ -1309,7 +1293,7 @@ if(!found && window.ZXing){
   hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
   const reader = new ZXing.BrowserMultiFormatReader(hints);
   try {
-    const res = await reader.decodeFromImageUrl(canvas.toDataURL("image/jpeg", 0.95));
+    const res = await reader.decodeFromImageUrl(canvas.toDataURL("image/jpeg", 0.92));
     if(res) found = res.getText ? res.getText() : res.text;
   } catch(e){}
 }
@@ -1402,7 +1386,7 @@ setValue("barcode",""); setValue("bundleNum",""); setValue("length",""); setValu
 function resetSaveButton(){
 const button=document.getElementById("saveBtn");
 const t = translations[currentLang];
-button.innerHTML = '➕ <span id="lblAddBundle">' + t.addBundle + '</span>';
+button.innerHTML = '➕ <span>' + t.addBundle + '</span>';
 button.style.background="#238b57";
 }
 
@@ -1419,7 +1403,7 @@ setValue("width",item.width);
 setValue("sheets",item.sheets);
 editingBarcode=code;
 const t = translations[currentLang];
-document.getElementById("saveBtn").innerHTML = '💾 <span id="lblUpdateBundle">' + t.updateBundle.replace('💾 ','') + '</span>';
+document.getElementById("saveBtn").innerHTML = '💾 <span>' + t.updateBundle.replace(/^💾\s*/,'') + '</span>';
 document.getElementById("saveBtn").style.background="#c97816";
 }
 
