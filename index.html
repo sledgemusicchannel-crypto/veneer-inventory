@@ -857,14 +857,17 @@ let torchOn=false;
 let scanTimer=null;
 
 function formatCameraError(err){
-  if(!err) return "EmptyError";
-  const parts = [];
-  if(err.name) parts.push(err.name);
-  if(err.message) parts.push(err.message);
-  if(typeof err.code !== "undefined") parts.push("code=" + err.code);
-  const str = String(err);
-  if(str && parts.indexOf(str) === -1 && str !== "[object Object]") parts.push(str);
-  return parts.length ? parts.join(": ") : "CameraError";
+  if(!err) return "UnknownError";
+  const name = err.name ? String(err.name) : "";
+  const msg = err.message ? String(err.message) : "";
+  let base = "";
+  if(name && msg && msg.indexOf(name) === -1 && name !== "Error"){
+    base = name + ": " + msg;
+  } else {
+    base = msg || name || String(err);
+  }
+  if(typeof err.code !== "undefined") base += " (code=" + err.code + ")";
+  return base + " [secure=" + String(window.isSecureContext) + "]";
 }
 
 /* MACRO / CLOSE-UP FOCUS BOOSTER */
@@ -912,7 +915,7 @@ try{
 }catch(e){}
 }
 
-function waitForVideoReady(video, timeoutMs = 2500){
+function waitForVideoReady(video, timeoutMs = 3000){
 return new Promise((resolve) => {
   if(video.readyState >= 2 && video.videoWidth > 0){
     resolve(true);
@@ -934,7 +937,7 @@ return new Promise((resolve) => {
 });
 }
 
-function getUserMediaWithTimeout(constraints, timeoutMs = 4000){
+function getUserMediaWithTimeout(constraints, timeoutMs = 8000){
 return new Promise((resolve, reject) => {
   let settled = false;
   const timer = setTimeout(() => {
@@ -946,7 +949,18 @@ return new Promise((resolve, reject) => {
 
   let p;
   try{
-    p = navigator.mediaDevices.getUserMedia(constraints);
+    if(navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function"){
+      p = navigator.mediaDevices.getUserMedia(constraints);
+    } else {
+      const legacyGetUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+      if(!legacyGetUserMedia){
+        settled = true;
+        clearTimeout(timer);
+        reject(new Error("NoGetUserMediaAPI"));
+        return;
+      }
+      p = new Promise((res, rej) => legacyGetUserMedia.call(navigator, constraints, res, rej));
+    }
   }catch(syncErr){
     if(!settled){
       settled = true;
@@ -974,7 +988,7 @@ return new Promise((resolve, reject) => {
 });
 }
 
-/* HIGH-SPEED CAMERA INITIALIZATION WITH PROGRESSIVE FALLBACKS */
+/* HIGH-SPEED CAMERA INITIALIZATION WITH MINIMAL-FIRST FALLBACKS */
 async function startCameraScanner(){
 const panel=document.getElementById("cameraPanel");
 const video=document.getElementById("cameraVideo");
@@ -987,48 +1001,18 @@ if(!window.isSecureContext && location.hostname !== "localhost" && location.host
   return;
 }
 
-if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-  showMessage("getUserMedia unavailable. Opening backup camera...", true);
-  playBeep(true);
-  document.getElementById("cameraInput").click();
-  return;
-}
-
 stopCameraScanner();
 
 panel.style.display="block";
 document.getElementById("startScanBtn").style.display="none";
 document.getElementById("stopScanBtn").style.display="block";
 scanBusy=false;
-setStreamInfo("Opening rear camera...");
+setStreamInfo("Requesting rear camera...");
 
 const constraintSets = [
-  {
-    audio: false,
-    video: {
-      facingMode: { ideal: "environment" },
-      width: { ideal: 1920, min: 1280 },
-      height: { ideal: 1080, min: 720 },
-      frameRate: { ideal: 60, min: 30 },
-      focusMode: { ideal: "continuous" }
-    }
-  },
-  {
-    audio: false,
-    video: {
-      facingMode: { ideal: "environment" },
-      width: { ideal: 1280 },
-      height: { ideal: 720 }
-    }
-  },
-  {
-    audio: false,
-    video: { facingMode: "environment" }
-  },
-  {
-    audio: false,
-    video: true
-  }
+  { audio: false, video: { facingMode: "environment" } },
+  { audio: false, video: true },
+  { audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } } }
 ];
 
 let stream = null;
@@ -1036,8 +1020,8 @@ let lastErr = null;
 
 for(let i = 0; i < constraintSets.length; i++){
   try{
-    setStreamInfo("Starting camera (" + (i + 1) + "/" + constraintSets.length + ")...");
-    stream = await getUserMediaWithTimeout(constraintSets[i], 3800);
+    setStreamInfo("Opening camera (" + (i + 1) + "/" + constraintSets.length + ")...");
+    stream = await getUserMediaWithTimeout(constraintSets[i], 8000);
     if(stream) break;
   }catch(err){
     lastErr = err;
@@ -1047,14 +1031,14 @@ for(let i = 0; i < constraintSets.length; i++){
   }
 }
 
-if(!stream && navigator.mediaDevices.enumerateDevices){
+if(!stream && navigator.mediaDevices && navigator.mediaDevices.enumerateDevices){
   try{
     setStreamInfo("Checking camera devices...");
     const devices = await navigator.mediaDevices.enumerateDevices();
     const videoInputs = devices.filter(d => d.kind === "videoinput");
     const rearCam = videoInputs.find(d => /back|rear|environment/i.test(d.label)) || videoInputs[videoInputs.length - 1];
     if(rearCam && rearCam.deviceId){
-      stream = await getUserMediaWithTimeout({ audio: false, video: { deviceId: { exact: rearCam.deviceId } } }, 3800);
+      stream = await getUserMediaWithTimeout({ audio: false, video: { deviceId: rearCam.deviceId } }, 8000);
     }
   }catch(err){
     lastErr = err;
@@ -1077,7 +1061,7 @@ video.setAttribute("playsinline", "");
 video.setAttribute("webkit-playsinline", "");
 video.muted = true;
 
-await waitForVideoReady(video, 2500);
+await waitForVideoReady(video, 3000);
 
 try{
   await video.play();
