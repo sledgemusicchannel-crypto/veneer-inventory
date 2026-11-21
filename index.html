@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<title>VeneerTally Pro</title>
+<title id="appTitle">VeneerTally Pro</title>
 <link rel="manifest" href="manifest.json">
 <script src="https://unpkg.com/@zxing/library@0.19.1"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -77,37 +77,49 @@ small{color:#596970}
 .modal-content{max-width:500px;margin:30px auto;background:#293c44;padding:16px;border-radius:10px;border:1px solid #53666e;text-align:left}
 .footer-note{text-align:center;color:#b9c7cb;font-size:11px;margin:16px 0 8px 0}
 
-/* Camera viewport enhancement */
+/* Urovo-Style Laser Viewport */
 .scan-region-box {
   position: relative;
   overflow: hidden;
   border-radius: 8px;
   border: 2px solid #238b57;
   background: #000;
+  cursor: pointer;
 }
 .scan-guide-frame {
   position: absolute;
   top: 50%;
   left: 50%;
   width: 86%;
-  height: 42%;
-  border: 2px dashed rgba(0, 230, 118, 0.75);
-  border-radius: 8px;
+  height: 44%;
+  border: 2px solid rgba(0, 230, 118, 0.85);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+  border-radius: 6px;
   transform: translate(-50%, -50%);
   z-index: 9;
   pointer-events: none;
+  transition: border-color 0.15s ease;
+}
+.scan-guide-frame.locked {
+  border-color: #00ff88;
+  box-shadow: 0 0 18px rgba(0, 255, 136, 0.7), 0 0 0 9999px rgba(0, 0, 0, 0.45);
 }
 .scan-reticle {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 82%;
+  width: 84%;
   height: 2px;
-  background: #00e676;
-  box-shadow: 0 0 8px #00e676;
+  background: #ff1744;
+  box-shadow: 0 0 10px #ff1744, 0 0 20px #ff5252;
   transform: translate(-50%, -50%);
   z-index: 10;
   pointer-events: none;
+  animation: laserPulse 1.1s infinite ease-in-out;
+}
+@keyframes laserPulse {
+  0%, 100% { opacity: 0.95; transform: translate(-50%, -50%) scaleY(1); }
+  50% { opacity: 0.45; transform: translate(-50%, -50%) scaleY(1.4); }
 }
 
 @media print{
@@ -124,7 +136,17 @@ th,td{border:1px solid #888}
 <body>
 
 <div class="app-container">
-<h2>🌿 VeneerTally Pro</h2>
+<div class="no-print" style="display:flex; justify-content:flex-end; margin-bottom:5px;">
+  <select id="langSelect" onchange="changeLanguage(this.value)" style="width:auto; padding:5px; font-size:12px; background:#293c44; color:white; border:1px solid #53666e; border-radius:6px;">
+    <option value="en">English</option>
+    <option value="vi">Tiếng Việt</option>
+    <option value="zh">中文</option>
+    <option value="ja">日本語</option>
+    <option value="ko">한국어</option>
+  </select>
+</div>
+
+<h2 id="lblMainHeader">🌿 VeneerTally Pro</h2>
 
 <div class="dashboard no-print">
 <div id="palletDisplay">Current Pallet: Pallet 01</div>
@@ -138,53 +160,53 @@ th,td{border:1px solid #888}
 <div class="meta-box no-print">
 <div class="row">
 <div class="col form-group">
-<label for="palletNum">Pallet Number</label>
+<label for="palletNum" id="lblPalletNum">Pallet Number</label>
 <input id="palletNum" value="Pallet 01" maxlength="60">
 </div>
 
 <div class="col form-group">
-<label for="companyName">Company / Supplier</label>
+<label for="companyName" id="lblCompanyName">Company / Supplier</label>
 <input id="companyName" placeholder="Supplier name" maxlength="100">
 </div>
 </div>
 
 <div class="form-group" style="margin-bottom:0">
-<label for="veneerSpecie">Veneer Species</label>
+<label for="veneerSpecie" id="lblVeneerSpecie">Veneer Species</label>
 <input id="veneerSpecie" placeholder="e.g. Mapa Burl / Ebony / Oak" maxlength="100">
 </div>
 </div>
 
 <div class="no-print">
 <button class="btn-scan" id="startScanBtn" onclick="startCameraScanner()">
-⚡ START HIGH-SPEED CAMERA SCANNER
+⚡ <span id="lblStartScan">START HIGH-SPEED CAMERA SCANNER</span>
 </button>
 
 <button class="btn-del" id="stopScanBtn" onclick="stopCameraScanner()" style="display:none">
-✕ STOP CAMERA
+✕ <span id="lblStopScan">STOP CAMERA</span>
 </button>
 
 <div id="cameraPanel" style="display:none;margin-top:8px;background:#07110d;padding:8px;border-radius:8px">
-<div class="scan-region-box">
-  <div class="scan-guide-frame"></div>
+<div class="scan-region-box" onclick="triggerMacroRefocus()" title="Tap to re-focus close-up">
+  <div id="scanGuideFrame" class="scan-guide-frame"></div>
   <div class="scan-reticle"></div>
-  <video id="cameraVideo" playsinline muted autoplay style="width:100%;max-height:360px;object-fit:cover;background:#000"></video>
+  <video id="cameraVideo" playsinline muted autoplay style="width:100%;max-height:320px;object-fit:cover;background:#000"></video>
 </div>
 
 <div class="row" style="margin-top:6px">
   <div class="col">
     <button class="btn-add" style="background:#147d46;font-size:12px" onclick="manualCaptureFrame()">
-    📸 INSTANT SNAP (BARCODE + TEXT)
+    📸 <span id="lblInstantSnap">INSTANT SNAP (BARCODE + TEXT)</span>
     </button>
   </div>
   <div class="col" id="torchContainer" style="display:none">
     <button class="btn-scan" style="background:#f39c12;font-size:12px" id="toggleTorchBtn" onclick="toggleTorch()">
-    💡 TOGGLE FLASH
+    💡 <span id="lblToggleFlash">TOGGLE FLASH</span>
     </button>
   </div>
 </div>
 
-<div style="font-size:11px;text-align:center;color:#d5e0e4;margin-top:6px">
-Fit the full white sticker inside the dashed box so both barcode &amp; L/W/P numbers are captured.
+<div id="lblCameraHint" style="font-size:11px;text-align:center;color:#d5e0e4;margin-top:6px">
+Align barcode with red laser line inside box. Tap screen to re-focus close-up.
 </div>
 </div>
 
@@ -192,41 +214,41 @@ Fit the full white sticker inside the dashed box so both barcode &amp; L/W/P num
 style="display:none" onchange="handleImageScan(event)">
 
 <button class="btn-scan" onclick="document.getElementById('cameraInput').click()" style="margin-top:6px">
-📸 TAKE PHOTO TO SCAN (BACKUP)
+📸 <span id="lblTakePhoneScan">TAKE PHOTO TO SCAN (BACKUP)</span>
 </button>
 </div>
 
 <div class="row no-print" style="margin-top:8px">
 <div class="col form-group">
-<label for="barcode">Barcode / ID (TIMBERplus / SF / QY)</label>
+<label for="barcode" id="lblBarcodeLabel">Barcode / ID (TIMBERplus / SF / QY)</label>
 <input id="barcode" placeholder="Scan or type barcode" maxlength="200" autocomplete="off">
 </div>
 
 <div class="form-group" style="width:110px">
-<label for="bundleNum">Bundle No.</label>
+<label for="bundleNum" id="lblBundleNum">Bundle No.</label>
 <input id="bundleNum" placeholder="No." maxlength="60">
 </div>
 </div>
 
 <div class="row no-print">
 <div class="col form-group">
-<label for="length">Length (cm)</label>
+<label for="length" id="lblLength">Length (cm)</label>
 <input type="number" id="length" placeholder="Length" min="0.01" step="any">
 </div>
 
 <div class="col form-group">
-<label for="width">Width (cm)</label>
+<label for="width" id="lblWidth">Width (cm)</label>
 <input type="number" id="width" placeholder="Width" min="0.01" step="any">
 </div>
 
 <div class="col form-group">
-<label for="sheets">Sheets</label>
+<label for="sheets" id="lblSheets">Sheets</label>
 <input type="number" id="sheets" value="1" min="1" step="1">
 </div>
 </div>
 
 <button class="btn-add no-print" id="saveBtn" onclick="addBundle()">
-➕ Add Bundle to Tally
+➕ <span id="lblAddBundle">Add Bundle to Tally</span>
 </button>
 
 <div class="no-print" style="margin-top:10px">
@@ -238,18 +260,18 @@ oninput="renderTable()" style="background:#293c44;color:white;border-color:#5366
 <table>
 <thead>
 <tr>
-<th>Pallet</th>
-<th>Species / Supplier</th>
-<th>Barcode / Bundle</th>
-<th>Len × Wid × Sheets</th>
-<th>m²</th>
-<th class="no-print">Actions</th>
+<th id="thPallet">Pallet</th>
+<th id="thSpeciesSupplier">Species / Supplier</th>
+<th id="thBarcodeBundle">Barcode / Bundle</th>
+<th id="thLenWidSheets">Len × Wid × Sheets</th>
+<th id="thArea">m²</th>
+<th class="no-print" id="thActions">Actions</th>
 </tr>
 </thead>
 <tbody id="tallyBody"></tbody>
 <tfoot>
 <tr>
-<td colspan="4" style="text-align:right">GRAND TOTAL:</td>
+<td colspan="4" style="text-align:right" id="lblGrandTotal">GRAND TOTAL:</td>
 <td id="tableGrandTotal">0.00 m²</td>
 <td class="no-print"></td>
 </tr>
@@ -258,33 +280,33 @@ oninput="renderTable()" style="background:#293c44;color:white;border-color:#5366
 </div>
 
 <div class="row no-print" style="margin-top:10px">
-<div class="col"><button class="btn-del" onclick="deleteLast()">🗑️ Delete Last</button></div>
-<div class="col"><button class="btn-excel" onclick="exportExcel()">📊 Export Data</button></div>
-<div class="col"><button class="btn-pdf" onclick="exportPDF()">📄 Report Summary</button></div>
+<div class="col"><button class="btn-del" onclick="deleteLast()">🗑️ <span id="lblDeleteLast">Delete Last</span></button></div>
+<div class="col"><button class="btn-excel" onclick="exportExcel()">📊 <span id="lblExportData">Export Data</span></button></div>
+<div class="col"><button class="btn-pdf" onclick="exportPDF()">📄 <span id="lblReportSummary">Report Summary</span></button></div>
 </div>
 
 <div class="row no-print">
-<div class="col"><button class="btn-scan" onclick="newPallet()">＋ New Pallet</button></div>
-<div class="col"><button class="btn-del" onclick="clearAll()">Clear All Records</button></div>
+<div class="col"><button class="btn-scan" onclick="newPallet()">＋ <span id="lblNewPallet">New Pallet</span></button></div>
+<div class="col"><button class="btn-del" onclick="clearAll()"><span id="lblClearAll">Clear All Records</span></button></div>
 </div>
 
 <div id="exportModal" class="no-print">
 <div class="modal-content">
 <h3 id="modalTitle" style="color:#81c784;margin-top:0;margin-bottom:5px">Export Tally Report</h3>
-<p style="font-size:12px;color:#ddd;margin-top:0">Ready for Excel, Google Sheets, or Sharing:</p>
+<p id="lblModalSub" style="font-size:12px;color:#ddd;margin-top:0">Ready for Excel, Google Sheets, or Sharing:</p>
 
 <textarea id="csvPreview" readonly style="width:100%;height:160px;background:#17232a;color:#81c784;font-family:monospace;font-size:11px;padding:8px;border:1px solid #53666e;border-radius:6px;margin-bottom:8px"></textarea>
 
 <button class="btn-add" style="margin-top:4px;background:#218c52" onclick="copyCSVToClipboard()">
-📋 COPY FORMATTED DATA TO CLIPBOARD
+📋 <span id="lblCopyClipboard">COPY FORMATTED DATA TO CLIPBOARD</span>
 </button>
 
 <button class="btn-scan" style="margin-top:8px;background:#154360" onclick="shareReportText()">
-📲 SHARE REPORT (WhatsApp / Email / Drive)
+📲 <span id="lblShareReport">SHARE REPORT (WhatsApp / Email / Drive)</span>
 </button>
 
 <button class="btn-del" style="margin-top:12px" onclick="document.getElementById('exportModal').style.display='none'">
-✕ Close Window
+✕ <span id="lblCloseWindow">Close Window</span>
 </button>
 </div>
 </div>
@@ -302,6 +324,292 @@ const SETTINGS_KEY="veneerTallyPro_settings_v13";
 
 let items=[];
 let editingBarcode=null;
+let currentLang="en";
+
+const translations = {
+  en: {
+    appTitle: "VeneerTally Pro",
+    mainHeader: "🌿 VeneerTally Pro",
+    palletDisplay: "Current Pallet: ",
+    totalBundles: "Total Bundles: ",
+    storageStatus: "TIMBERplus + Label OCR Dual Engine Active",
+    palletNum: "Pallet Number",
+    companyName: "Company / Supplier",
+    companyPlaceholder: "Supplier name",
+    veneerSpecie: "Veneer Species",
+    speciePlaceholder: "e.g. Mapa Burl / Ebony / Oak",
+    startScan: "START HIGH-SPEED CAMERA SCANNER",
+    stopScan: "STOP CAMERA",
+    instantSnap: "INSTANT SNAP (BARCODE + TEXT)",
+    toggleFlash: "TOGGLE FLASH",
+    cameraHint: "Align barcode with red laser line inside box. Tap screen to re-focus close-up.",
+    takePhotoScan: "TAKE PHOTO TO SCAN (BACKUP)",
+    barcodeLabel: "Barcode / ID (TIMBERplus / SF / QY)",
+    barcodePlaceholder: "Scan or type barcode",
+    bundleNum: "Bundle No.",
+    length: "Length (cm)",
+    width: "Width (cm)",
+    sheets: "Sheets",
+    addBundle: "Add Bundle to Tally",
+    updateBundle: "💾 Update Bundle",
+    searchPlaceholder: "🔍 Search barcode, pallet or supplier",
+    thPallet: "Pallet",
+    thSpeciesSupplier: "Species / Supplier",
+    thBarcodeBundle: "Barcode / Bundle",
+    thLenWidSheets: "Len × Wid × Sheets",
+    thActions: "Actions",
+    grandTotal: "GRAND TOTAL:",
+    deleteLast: "Delete Last",
+    exportData: "Export Data",
+    reportSummary: "Report Summary",
+    newPallet: "New Pallet",
+    clearAll: "Clear All Records",
+    modalTitle: "Export Tally Report",
+    modalSub: "Ready for Excel, Google Sheets, or Sharing:",
+    copyClipboard: "COPY FORMATTED DATA TO CLIPBOARD",
+    shareReport: "SHARE REPORT (WhatsApp / Email / Drive)",
+    closeWindow: "Close Window",
+    editBtn: "Edit",
+    delBtn: "Del"
+  },
+  vi: {
+    appTitle: "VeneerTally Pro",
+    mainHeader: "🌿 VeneerTally Pro",
+    palletDisplay: "Pallet hiện tại: ",
+    totalBundles: "Tổng số bó: ",
+    storageStatus: "Động cơ kép TIMBERplus + OCR nhãn đang hoạt động",
+    palletNum: "Số Pallet",
+    companyName: "Công ty / Nhà cung cấp",
+    companyPlaceholder: "Tên nhà cung cấp",
+    veneerSpecie: "Loại Gỗ Lạng",
+    speciePlaceholder: "vd. Mapa Burl / Ebony / Oak",
+    startScan: "BẮT ĐẦU QUÉT CAMERA TỐC ĐỘ CAO",
+    stopScan: "DỪNG CAMERA",
+    instantSnap: "CHỤP NHANH (MÃ VẠCH + VĂN BẢN)",
+    toggleFlash: "BẬT/TẮT ĐÈN FLASH",
+    cameraHint: "Đưa tem vào khung và chạm màn hình để lấy nét cận cảnh.",
+    takePhotoScan: "CHỤP ẢNH ĐỂ QUÉT (DỰ PHÒNG)",
+    barcodeLabel: "Mã vạch / ID (TIMBERplus / SF / QY)",
+    barcodePlaceholder: "Quét hoặc nhập mã vạch",
+    bundleNum: "Số Bó",
+    length: "Chiều dài (cm)",
+    width: "Chiều rộng (cm)",
+    sheets: "Số tờ",
+    addBundle: "Thêm Bó vào Bảng Kê",
+    updateBundle: "💾 Cập Nhật Bó",
+    searchPlaceholder: "🔍 Tìm kiếm mã vạch, pallet hoặc nhà cung cấp",
+    thPallet: "Pallet",
+    thSpeciesSupplier: "Loại gỗ / Nhà cung cấp",
+    thBarcodeBundle: "Mã vạch / Bó",
+    thLenWidSheets: "Dài × Rộng × Tờ",
+    thActions: "Thao tác",
+    grandTotal: "TỔNG CỘNG:",
+    deleteLast: "Xóa Mục Cuối",
+    exportData: "Xuất Dữ Liệu",
+    reportSummary: "Tóm Tắt Báo Cáo",
+    newPallet: "Pallet Mới",
+    clearAll: "Xóa Tất Cả Bản Ghi",
+    modalTitle: "Xuất Báo Cáo Bảng Kê",
+    modalSub: "Sẵn sàng cho Excel, Google Sheets hoặc Chia sẻ:",
+    copyClipboard: "SAO CHÉP DỮ LIỆU ĐÃ ĐỊNH DẠNG",
+    shareReport: "CHIA SẺ BÁO CÁO (WhatsApp / Email / Drive)",
+    closeWindow: "Đóng Cửa Sổ",
+    editBtn: "Sửa",
+    delBtn: "Xóa"
+  },
+  zh: {
+    appTitle: "VeneerTally Pro",
+    mainHeader: "🌿 VeneerTally Pro",
+    palletDisplay: "当前卡板: ",
+    totalBundles: "总捆数: ",
+    storageStatus: "TIMBERplus + 标签OCR双引擎已激活",
+    palletNum: "卡板编号",
+    companyName: "公司 / 供应商",
+    companyPlaceholder: "供应商名称",
+    veneerSpecie: "木皮树种",
+    speciePlaceholder: "例如: 树瘤 / 乌木 / 橡木",
+    startScan: "启动高速相机扫描",
+    stopScan: "停止相机",
+    instantSnap: "立即快照 (条形码 + 文本)",
+    toggleFlash: "切换闪光灯",
+    cameraHint: "将标签对准红线框内，点击屏幕可近距离重新对焦。",
+    takePhotoScan: "拍照扫描 (备用)",
+    barcodeLabel: "条形码 / ID (TIMBERplus / SF / QY)",
+    barcodePlaceholder: "扫描或输入条形码",
+    bundleNum: "捆号",
+    length: "长度 (cm)",
+    width: "宽度 (cm)",
+    sheets: "张数",
+    addBundle: "添加捆数到统计",
+    updateBundle: "💾 更新捆数",
+    searchPlaceholder: "🔍 搜索条形码、卡板或供应商",
+    thPallet: "卡板",
+    thSpeciesSupplier: "树种 / 供应商",
+    thBarcodeBundle: "条形码 / 捆号",
+    thLenWidSheets: "长 × 宽 × 张数",
+    thActions: "操作",
+    grandTotal: "总计:",
+    deleteLast: "删除最后一条",
+    exportData: "导出数据",
+    reportSummary: "报告摘要",
+    newPallet: "新卡板",
+    clearAll: "清除所有记录",
+    modalTitle: "导出统计报告",
+    modalSub: "适用于 Excel、Google Sheets 或分享：",
+    copyClipboard: "复制格式化数据到剪贴板",
+    shareReport: "分享报告 (WhatsApp / 电子邮件 / 云端硬盘)",
+    closeWindow: "关闭窗口",
+    editBtn: "编辑",
+    delBtn: "删除"
+  },
+  ja: {
+    appTitle: "VeneerTally Pro",
+    mainHeader: "🌿 VeneerTally Pro",
+    palletDisplay: "現在のパレット: ",
+    totalBundles: "合計束数: ",
+    storageStatus: "TIMBERplus + ラベルOCR デュアルエンジン有効",
+    palletNum: "パレット番号",
+    companyName: "会社 / サプライヤー",
+    companyPlaceholder: "サプライヤー名",
+    veneerSpecie: "ツキ板樹種",
+    speciePlaceholder: "例: バーチ / 黒檀 / オーク",
+    startScan: "高速カメラスキャナー開始",
+    stopScan: "カメラ停止",
+    instantSnap: "インスタントスナップ (バーコード + テキスト)",
+    toggleFlash: "フラッシュ切り替え",
+    cameraHint: "赤いレーザー線にバーコードを合わせてください。画面タップで接写再フォーカス。",
+    takePhotoScan: "写真を撮ってスキャン (予備)",
+    barcodeLabel: "バーコード / ID (TIMBERplus / SF / QY)",
+    barcodePlaceholder: "バーコードをスキャンまたは入力",
+    bundleNum: "束番号",
+    length: "長さ (cm)",
+    width: "幅 (cm)",
+    sheets: "枚数",
+    addBundle: "集計に束を追加",
+    updateBundle: "💾 束を更新",
+    searchPlaceholder: "🔍 バーコード、パレット、サプライヤーを検索",
+    thPallet: "パレット",
+    thSpeciesSupplier: "樹種 / サプライヤー",
+    thBarcodeBundle: "バーコード / 束",
+    thLenWidSheets: "長 × 幅 × 枚数",
+    thActions: "操作",
+    grandTotal: "総計:",
+    deleteLast: "最後の項目を削除",
+    exportData: "データエクスポート",
+    reportSummary: "レポート概要",
+    newPallet: "新しいパレット",
+    clearAll: "全レコードをクリア",
+    modalTitle: "集計レポートのエクスポート",
+    modalSub: "Excel、Googleスプレッドシート、または共有の準備完了:",
+    copyClipboard: "クリップボードにデータをコピー",
+    shareReport: "レポートを共有 (WhatsApp / メール / ドライブ)",
+    closeWindow: "ウィンドウを閉じる",
+    editBtn: "編集",
+    delBtn: "削除"
+  },
+  ko: {
+    appTitle: "VeneerTally Pro",
+    mainHeader: "🌿 VeneerTally Pro",
+    palletDisplay: "현재 파레트: ",
+    totalBundles: "총 번들수: ",
+    storageStatus: "TIMBERplus + 라벨 OCR 듀얼 엔진 활성화됨",
+    palletNum: "파레트 번호",
+    companyName: "회사 / 공급업체",
+    companyPlaceholder: "공급업체 이름",
+    veneerSpecie: "무늬목 수종",
+    speciePlaceholder: "예: 버블 / 흑단 / 오크",
+    startScan: "고속 카메라 스캐너 시작",
+    stopScan: "카메라 중지",
+    instantSnap: "즉시 촬영 (바코드 + 텍스트)",
+    toggleFlash: "플래시 토글",
+    cameraHint: "빨간 레이저 선에 바코드를 맞추세요. 화면을 탭하면 근접 재초점됩니다.",
+    takePhotoScan: "사진 촬영하여 스캔 (백업)",
+    barcodeLabel: "바코드 / ID (TIMBERplus / SF / QY)",
+    barcodePlaceholder: "바코드 스캔 또는 입력",
+    bundleNum: "번들 번호",
+    length: "길이 (cm)",
+    width: "너비 (cm)",
+    sheets: "매수",
+    addBundle: "집계에 번들 추가",
+    updateBundle: "💾 번들 수정",
+    searchPlaceholder: "🔍 바코드, 파레트 또는 공급업체 검색",
+    thPallet: "파레트",
+    thSpeciesSupplier: "수종 / 공급업체",
+    thBarcodeBundle: "바코드 / 번들",
+    thLenWidSheets: "길이 × 너비 × 매수",
+    thActions: "작업",
+    grandTotal: "총합계:",
+    deleteLast: "마지막 삭제",
+    exportData: "데이터 내보내기",
+    reportSummary: "보고서 요약",
+    newPallet: "새 파레트",
+    clearAll: "모든 기록 지우기",
+    modalTitle: "집계 보고서 내보내기",
+    modalSub: "Excel, Google 스프레드시트 또는 공유 준비 완료:",
+    copyClipboard: "클립보드에 데이터 복사",
+    shareReport: "보고서 공유 (WhatsApp / 이메일 / 드라이브)",
+    closeWindow: "창 닫기",
+    editBtn: "수정",
+    delBtn: "삭제"
+  }
+};
+
+function changeLanguage(lang){
+  if(!translations[lang]) lang = "en";
+  currentLang = lang;
+  try{ localStorage.setItem(STORAGE_KEY+"_lang", lang); }catch(e){}
+  
+  const t = translations[lang];
+  document.getElementById("appTitle").textContent = t.appTitle;
+  document.getElementById("lblMainHeader").textContent = t.mainHeader;
+  document.getElementById("lblPalletNum").textContent = t.palletNum;
+  document.getElementById("lblCompanyName").textContent = t.companyName;
+  document.getElementById("companyName").placeholder = t.companyPlaceholder;
+  document.getElementById("lblVeneerSpecie").textContent = t.veneerSpecie;
+  document.getElementById("veneerSpecie").placeholder = t.speciePlaceholder;
+  document.getElementById("lblStartScan").textContent = t.startScan;
+  document.getElementById("lblStopScan").textContent = t.stopScan;
+  document.getElementById("lblInstantSnap").textContent = t.instantSnap;
+  document.getElementById("lblToggleFlash").textContent = t.toggleFlash;
+  document.getElementById("lblCameraHint").textContent = t.cameraHint;
+  document.getElementById("lblTakePhoneScan").textContent = t.takePhotoScan;
+  document.getElementById("lblBarcodeLabel").textContent = t.barcodeLabel;
+  document.getElementById("barcode").placeholder = t.barcodePlaceholder;
+  document.getElementById("lblBundleNum").textContent = t.bundleNum;
+  document.getElementById("lblLength").textContent = t.length;
+  document.getElementById("lblWidth").textContent = t.width;
+  document.getElementById("lblSheets").textContent = t.sheets;
+  
+  const saveBtn = document.getElementById("saveBtn");
+  if(editingBarcode !== null){
+    saveBtn.innerHTML = '💾 <span id="lblUpdateBundle">' + t.updateBundle.replace('💾 ','') + '</span>';
+  } else {
+    saveBtn.innerHTML = '➕ <span id="lblAddBundle">' + t.addBundle + '</span>';
+  }
+  
+  document.getElementById("searchFilter").placeholder = t.searchPlaceholder;
+  document.getElementById("thPallet").textContent = t.thPallet;
+  document.getElementById("thSpeciesSupplier").textContent = t.thSpeciesSupplier;
+  document.getElementById("thBarcodeBundle").textContent = t.thBarcodeBundle;
+  document.getElementById("thLenWidSheets").textContent = t.thLenWidSheets;
+  document.getElementById("thActions").textContent = t.thActions;
+  document.getElementById("lblGrandTotal").textContent = t.grandTotal;
+  
+  document.getElementById("lblDeleteLast").textContent = t.deleteLast;
+  document.getElementById("lblExportData").textContent = t.exportData;
+  document.getElementById("lblReportSummary").textContent = t.reportSummary;
+  document.getElementById("lblNewPallet").textContent = t.newPallet;
+  document.getElementById("lblClearAll").textContent = t.clearAll;
+  
+  document.getElementById("modalTitle").textContent = t.modalTitle;
+  document.getElementById("lblModalSub").textContent = t.modalSub;
+  document.getElementById("lblCopyClipboard").textContent = t.copyClipboard;
+  document.getElementById("lblShareReport").textContent = t.shareReport;
+  document.getElementById("lblCloseWindow").textContent = t.closeWindow;
+  
+  updateTotals();
+  renderTable();
+}
 
 function getValue(id){ return document.getElementById(id).value.trim(); }
 function setValue(id,value){ document.getElementById(id).value=value; }
@@ -328,39 +636,32 @@ if(audioContext.state==="suspended"){ audioContext.resume(); }
 const osc=audioContext.createOscillator();
 const gain=audioContext.createGain();
 osc.type="sine";
-osc.frequency.value=error?330:1000;
+osc.frequency.value=error?330:1050;
 gain.gain.setValueAtTime(0.0001,audioContext.currentTime);
-gain.gain.exponentialRampToValueAtTime(0.35,audioContext.currentTime+0.02);
-gain.gain.exponentialRampToValueAtTime(0.0001,audioContext.currentTime+0.28);
+gain.gain.exponentialRampToValueAtTime(0.35,audioContext.currentTime+0.015);
+gain.gain.exponentialRampToValueAtTime(0.0001,audioContext.currentTime+0.18);
 osc.connect(gain);
 gain.connect(audioContext.destination);
 osc.start();
-osc.stop(audioContext.currentTime+0.3);
-if(navigator.vibrate) navigator.vibrate(error?[180,80,180]:70);
+osc.stop(audioContext.currentTime+0.2);
+if(navigator.vibrate) navigator.vibrate(error?[180,80,180]:60);
 }catch(e){
 if(navigator.vibrate) navigator.vibrate(error?[180,80,180]:120);
 }
 }
 
-/* PRESERVE EXACT DIMENSIONS (INCLUDING 335cm, 385cm, 18.5cm, 12.5cm) */
 function cleanDim(val){
 let n = Number(val);
 if(!Number.isFinite(n) || n <= 0) return null;
-// Only convert millimeters to centimeters if >= 600 (e.g., 2350 -> 235)
-if(n >= 600){
-n = n / 10;
-}
+if(n >= 600) n = n / 10;
 return Math.round(n * 100) / 100;
 }
 
-/* UNIVERSAL PARSER FOR BOTH LABEL FORMATS IN YOUR PHOTOS */
 function parseVeneerBarcode(raw){
 const text=String(raw||"").trim();
 const norm=text.replace(/[,;|]/g," ").replace(/\s+/g," ");
 const result={ length:null, width:null, sheets:null, bundle:null, source:"" };
 
-// Extract Bundle IDs seen on your labels:
-// e.g. QY000017, QY000003, 03314A, 49163, 2753-1, BYSL..., S-HS...
 const qyMatch = text.match(/\b(QY\d+|BYSL\d+[a-z]?|S-HS\d+-\d+)\b/i);
 const sfMatch = text.match(/\b(\d{4,6}[A-Z]?(?:-\d+)?)\s+SF(?:\s+[A-Z0-9]+)?\s+(\d{2,4})\b/i);
 if(qyMatch){
@@ -369,7 +670,6 @@ if(qyMatch){
   result.bundle = sfMatch[1] + "-" + sfMatch[2];
 }
 
-// 1. Format A ("L 335  W 18.5  P 24  14.87 m²" / "L 385  W 12.5  P 24")
 const lwpMatch = norm.match(/\bL\s*[:= -]?\s*(\d{2,4}(?:\.\d+)?)\s+W\s*[:= -]?\s*(\d{1,3}(?:\.\d+)?)\s+(?:P|S|SHT|PCS)\s*[:= -]?\s*(\d{1,3})\b/i);
 if(lwpMatch){
   result.length = cleanDim(lwpMatch[1]);
@@ -379,7 +679,6 @@ if(lwpMatch){
   if(result.length && result.width && result.sheets > 0) return result;
 }
 
-// 2. Format B ("235 LEN  19 WIDE  14 SHT  6.25 SM")
 const lenMatch = norm.match(/(\d+(?:\.\d+)?)\s*(?:LEN(?:GTH)?)\b/i) || norm.match(/\b(?:LEN(?:GTH)?|L)\s*[:= -]?\s*(\d+(?:\.\d+)?)/i);
 const widMatch = norm.match(/(\d+(?:\.\d+)?)\s*(?:WID(?:E|TH)?)\b/i) || norm.match(/\b(?:WID(?:E|TH)?|W)\s*[:= -]?\s*(\d+(?:\.\d+)?)/i);
 const shtMatch = norm.match(/(\d+)\s*(?:SHT|SHEETS?|PCS|P)\b/i) || norm.match(/\b(?:SHT|SHEETS?|PCS|P)\s*[:= -]?\s*(\d+)\b/i);
@@ -392,7 +691,6 @@ if(lenMatch && widMatch && shtMatch){
   if(result.length && result.width && result.sheets > 0) return result;
 }
 
-// 3. Delimited 3-number sequence (e.g., "235x19x14", "335*18.5*24", "200/13/24")
 const seqMatch = norm.match(/\b(\d{2,4}(?:\.\d+)?)\s*[xX×*\/\- ]\s*(\d{1,3}(?:\.\d+)?)\s*[xX×*\/\- ]\s*(\d{1,3})\b/);
 if(seqMatch){
   const l = cleanDim(seqMatch[1]);
@@ -407,7 +705,6 @@ if(seqMatch){
   }
 }
 
-// 4. TIMBERplus / BSS Numeric Barcode String (14 to 24 digits)
 const digits = text.replace(/\D/g,"");
 if(digits.length >= 16 && digits.length <= 24){
   const len = cleanDim(digits.slice(7, 10));
@@ -439,7 +736,6 @@ if(digits.length >= 16 && digits.length <= 24){
 return result;
 }
 
-/* OCR HELPER: READS PRINTED "L 335 W 18.5 P 24" OR "235 LEN 19 WIDE 14 SHT" WHEN BARCODE ONLY HAS ID */
 async function extractLabelTextViaOCR(canvas){
 if(!window.Tesseract) return null;
 try{
@@ -452,25 +748,49 @@ try{
 }
 }
 
-function createSharpenedCanvasFromSource(sourceEl, w, h){
-const canvas = document.createElement("canvas");
-canvas.width = w;
-canvas.height = h;
-const ctx = canvas.getContext("2d", { willReadFrequently: true });
-ctx.filter = "contrast(1.55) brightness(1.08) grayscale(100%)";
-ctx.drawImage(sourceEl, 0, 0, w, h);
-return canvas;
+/* HIGH-SPEED ROI CROP + LUMINANCE CONTRAST BOOST (UROVO-STYLE SHARPENING) */
+const roiCanvas = document.createElement("canvas");
+const roiCtx = roiCanvas.getContext("2d", { willReadFrequently: true });
+
+function captureSharpROI(sourceEl, fullFrame = false){
+const srcW = sourceEl.videoWidth || sourceEl.naturalWidth || 1280;
+const srcH = sourceEl.videoHeight || sourceEl.naturalHeight || 720;
+
+// Crop strictly to the center reticle box (88% width x 48% height) for ultra-fast decoding
+const cropW = fullFrame ? srcW : Math.round(srcW * 0.88);
+const cropH = fullFrame ? srcH : Math.round(srcH * 0.48);
+const cropX = fullFrame ? 0 : Math.round((srcW - cropW) / 2);
+const cropY = fullFrame ? 0 : Math.round((srcH - cropH) / 2);
+
+roiCanvas.width = cropW;
+roiCanvas.height = cropH;
+roiCtx.drawImage(sourceEl, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+// Fast native pixel contrast stretch (no slow CSS filter overhead)
+const imgData = roiCtx.getImageData(0, 0, cropW, cropH);
+const data = imgData.data;
+for(let i = 0; i < data.length; i += 4){
+  const luma = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+  // Stretch contrast around midpoint 128 for crisp barcode edges
+  let enhanced = (luma - 128) * 1.65 + 128;
+  enhanced = enhanced < 0 ? 0 : (enhanced > 255 ? 255 : enhanced);
+  data[i] = data[i + 1] = data[i + 2] = enhanced;
+}
+roiCtx.putImageData(imgData, 0, 0);
+return roiCanvas;
 }
 
 async function applyScannedBarcode(raw, snapshotCanvas = null){
 const code = String(raw || "").trim();
 if(!code){ playBeep(true); showMessage("Empty barcode returned.",true); return; }
+const guide = document.getElementById("scanGuideFrame");
+if(guide) guide.classList.add("locked");
+
 setValue("barcode", code);
 let parsed = parseVeneerBarcode(code);
 
-// If barcode only contained the Bundle ID (like "03314A" or "49163"), run OCR on the same snapshot to grab L / W / P!
 if(parsed.length === null && snapshotCanvas){
-  showMessage("Barcode ID " + code + " captured. Reading printed L / W / Sheets...");
+  showMessage("Barcode ID " + code + " locked. Reading L / W / Sheets...");
   const ocrText = await extractLabelTextViaOCR(snapshotCanvas);
   if(ocrText){
     const ocrParsed = parseVeneerBarcode(ocrText);
@@ -490,7 +810,6 @@ if(parsed.length !== null){
   showMessage("Captured (" + parsed.source + "): " + parsed.length + " × " + parsed.width + " × " + parsed.sheets + " (" + calculateArea(parsed.length, parsed.width, parsed.sheets) + " m²)");
   playBeep(false);
 } else {
-  // Even if dimensions weren't in the barcode, fill Bundle No. if recognized
   if(parsed.bundle) setValue("bundleNum", parsed.bundle);
   showMessage("Barcode ID: " + code + ". Tap 'Instant Snap' with full label in box or enter L/W/Sheets.", true);
   playBeep(false);
@@ -507,71 +826,141 @@ applyScannedBarcode(this.value);
 });
 
 let zxingReader=null;
-let cameraControls=null;
 let cameraStream=null;
 let nativeDetector=null;
 let scanBusy=false;
 let torchOn=false;
+let scanTimer=null;
 
-/* HIGH-PERFORMANCE CAMERA SCANNER INITIALIZATION */
+/* MACRO / CLOSE-UP FOCUS BOOSTER */
+async function applyMacroFocus(track){
+if(!track || !track.getCapabilities) return;
+try{
+  const caps = track.getCapabilities();
+  const adv = {};
+  if(caps.focusMode && caps.focusMode.includes("continuous")){
+    adv.focusMode = "continuous";
+  }
+  if(caps.focusDistance && typeof caps.focusDistance.min === "number"){
+    // Bias slightly above minimum macro distance for 8-20cm sticker scanning
+    adv.focusDistance = Math.min(caps.focusDistance.max, caps.focusDistance.min + 0.08);
+  }
+  if(caps.zoom){
+    // Slight 1.35x optical/sensor crop brings barcodes closer without pixelation
+    adv.zoom = Math.min(caps.zoom.max, Math.max(caps.zoom.min || 1, 1.35));
+  }
+  if(Object.keys(adv).length > 0){
+    await track.applyConstraints({ advanced: [adv] });
+  }
+}catch(e){}
+}
+
+async function triggerMacroRefocus(){
+if(!cameraStream) return;
+const track = cameraStream.getVideoTracks()[0];
+if(!track || !track.getCapabilities) return;
+try{
+  const caps = track.getCapabilities();
+  if(caps.focusMode){
+    if(caps.focusMode.includes("single-shot")){
+      await track.applyConstraints({ advanced: [{ focusMode: "single-shot" }] });
+    }
+    setTimeout(() => applyMacroFocus(track), 250);
+  }
+  showMessage("Re-focusing close-up...");
+}catch(e){}
+}
+
+/* BULLETPROOF HIGH-SPEED CAMERA INITIALIZATION */
 async function startCameraScanner(){
 const panel=document.getElementById("cameraPanel");
 const video=document.getElementById("cameraVideo");
+const guide=document.getElementById("scanGuideFrame");
+if(guide) guide.classList.remove("locked");
+
+if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+  showMessage("Camera API requires HTTPS or localhost. Use 'Take Photo to Scan'.", true);
+  playBeep(true);
+  return;
+}
+
+stopCameraScanner();
+
 panel.style.display="block";
 document.getElementById("startScanBtn").style.display="none";
 document.getElementById("stopScanBtn").style.display="block";
 scanBusy=false;
 
-try{
-const constraints = {
-  audio: false,
-  video: {
-    facingMode: { ideal: "environment" },
-    width: { ideal: 1920, min: 1280 },
-    height: { ideal: 1080, min: 720 },
-    frameRate: { ideal: 60, min: 30 },
-    focusMode: { ideal: "continuous" }
+// Progressive fallback constraints so camera NEVER fails to open on Android/WebView
+const constraintSets = [
+  {
+    audio: false,
+    video: {
+      facingMode: { ideal: "environment" },
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      frameRate: { ideal: 30 }
+    }
+  },
+  {
+    audio: false,
+    video: { facingMode: "environment" }
+  },
+  {
+    audio: false,
+    video: true
   }
-};
+];
 
-cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+let stream = null;
+let lastErr = null;
+for(const constraints of constraintSets){
+  try{
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    if(stream) break;
+  }catch(err){
+    lastErr = err;
+  }
+}
+
+if(!stream){
+  stopCameraScanner();
+  const reason = lastErr && lastErr.name ? " (" + lastErr.name + ")" : "";
+  showMessage("Camera blocked or unavailable" + reason + ". Allow camera permission or use Photo Backup.", true);
+  playBeep(true);
+  return;
+}
+
+cameraStream = stream;
 video.srcObject = cameraStream;
-await video.play();
+
+try{
+  await video.play();
+}catch(e){
+  video.muted = true;
+  await video.play();
+}
 
 const track = cameraStream.getVideoTracks()[0];
-if(track && track.getCapabilities){
-  const caps = track.getCapabilities();
-  const advancedConstraints = {};
-  if(caps.focusMode && caps.focusMode.includes("continuous")){
-    advancedConstraints.focusMode = "continuous";
-  }
-  if(caps.torch){
+if(track){
+  await applyMacroFocus(track);
+  if(track.getCapabilities && track.getCapabilities().torch){
     document.getElementById("torchContainer").style.display = "block";
   }
-  if(caps.zoom){
-    advancedConstraints.zoom = Math.min(caps.zoom.max, 1.4);
-  }
-  if(Object.keys(advancedConstraints).length > 0){
-    try { await track.applyConstraints({ advanced: [advancedConstraints] }); } catch(e){}
-  }
 }
 
-// 1. Native High-Speed Hardware Accelerator (Chrome / Android / UROVO)
+// Initialize Native BarcodeDetector if available
 if("BarcodeDetector" in window){
   try{
-    nativeDetector = new BarcodeDetector({ formats: ['code_128', 'code_39', 'ean_13', 'qr_code', 'data_matrix'] });
-    scanNativeVideoLoop();
-    return;
+    nativeDetector = new BarcodeDetector({
+      formats: ['code_128', 'code_39', 'code_93', 'codabar', 'ean_13', 'ean_8', 'itf', 'qr_code', 'data_matrix']
+    });
   }catch(e){
-    try{
-      nativeDetector = new BarcodeDetector();
-      scanNativeVideoLoop();
-      return;
-    }catch(err){}
+    try{ nativeDetector = new BarcodeDetector(); }catch(err){ nativeDetector = null; }
   }
 }
 
-// 2. High-Precision ZXing Library Engine
+// Initialize ZXing Fallback Reader
 if(window.ZXing){
   const hints = new Map();
   hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
@@ -579,63 +968,77 @@ if(window.ZXing){
     ZXing.BarcodeFormat.CODE_128,
     ZXing.BarcodeFormat.CODE_39,
     ZXing.BarcodeFormat.EAN_13,
+    ZXing.BarcodeFormat.ITF,
     ZXing.BarcodeFormat.DATA_MATRIX,
     ZXing.BarcodeFormat.QR_CODE
   ]);
-
   zxingReader = new ZXing.BrowserMultiFormatReader(hints);
-  cameraControls = await zxingReader.decodeFromVideoElement(video, async (result) => {
-    if(result && !scanBusy){
-      scanBusy = true;
-      const snap = createSharpenedCanvasFromSource(video, video.videoWidth || 1280, video.videoHeight || 720);
-      await applyScannedBarcode(result.getText ? result.getText() : result.text, snap);
-      stopCameraScanner();
-    }
-  });
-} else {
-  showMessage("Library loading... Use Instant Snap button if unready.", true);
 }
 
-} catch(err){
-  stopCameraScanner();
-  showMessage("Camera initialization failed. Check permissions.", true);
-  playBeep(true);
-}
+runHighSpeedScanLoop();
 }
 
-/* Fast Video Loop with Snapshot Capture for Dual Barcode + OCR */
-async function scanNativeVideoLoop(){
+/* 35ms UROVO-SPEED ROI SCAN LOOP (~28 SCANS/SEC) */
+function runHighSpeedScanLoop(){
 const video = document.getElementById("cameraVideo");
+let frameCounter = 0;
 
-while(cameraStream && nativeDetector && !scanBusy){
+const tick = async () => {
+  if(!cameraStream || scanBusy) return;
+
   if(video.readyState >= 2 && video.videoWidth > 0){
+    frameCounter++;
     try{
-      let codes = await nativeDetector.detect(video);
-      let snapCanvas = null;
-
-      if(!codes || !codes.length){
-        snapCanvas = createSharpenedCanvasFromSource(video, video.videoWidth, video.videoHeight);
-        codes = await nativeDetector.detect(snapCanvas);
-      }
-
-      if(codes && codes.length && !scanBusy){
-        scanBusy = true;
-        if(!snapCanvas){
-          snapCanvas = createSharpenedCanvasFromSource(video, video.videoWidth, video.videoHeight);
+      // 1. Direct hardware scan on raw video frame (0ms copy overhead)
+      if(nativeDetector){
+        const rawCodes = await nativeDetector.detect(video);
+        if(rawCodes && rawCodes.length && !scanBusy){
+          scanBusy = true;
+          rawCodes.sort((a, b) => (b.rawValue || "").length - (a.rawValue || "").length);
+          const sharpSnap = captureSharpROI(video, false);
+          await applyScannedBarcode(rawCodes[0].rawValue, sharpSnap);
+          stopCameraScanner();
+          return;
         }
-        // Prefer the longest barcode string if both 1D and DataMatrix are detected
-        codes.sort((a, b) => (b.rawValue || "").length - (a.rawValue || "").length);
-        await applyScannedBarcode(codes[0].rawValue, snapCanvas);
-        stopCameraScanner();
-        return;
       }
-    } catch(e){}
+
+      // 2. Every 2nd frame: Crop to center reticle + contrast sharpen for close-up/glare labels
+      if(frameCounter % 2 === 0){
+        const sharpROI = captureSharpROI(video, false);
+
+        if(nativeDetector){
+          const roiCodes = await nativeDetector.detect(sharpROI);
+          if(roiCodes && roiCodes.length && !scanBusy){
+            scanBusy = true;
+            roiCodes.sort((a, b) => (b.rawValue || "").length - (a.rawValue || "").length);
+            await applyScannedBarcode(roiCodes[0].rawValue, sharpROI);
+            stopCameraScanner();
+            return;
+          }
+        } else if(zxingReader){
+          // ZXing decode from sharpened ROI canvas
+          const luminanceSource = new ZXing.HTMLCanvasElementLuminanceSource(sharpROI);
+          const binaryBitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminanceSource));
+          const res = zxingReader.decodeBitmap(binaryBitmap);
+          if(res && !scanBusy){
+            scanBusy = true;
+            await applyScannedBarcode(res.getText(), sharpROI);
+            stopCameraScanner();
+            return;
+          }
+        }
+      }
+    }catch(e){}
   }
-  await new Promise(resolve => setTimeout(resolve, 90));
-}
+
+  if(cameraStream && !scanBusy){
+    scanTimer = setTimeout(tick, 35);
+  }
+};
+
+scanTimer = setTimeout(tick, 35);
 }
 
-/* Flashlight / Torch Toggle */
 async function toggleTorch(){
 if(!cameraStream) return;
 const track = cameraStream.getVideoTracks()[0];
@@ -647,7 +1050,6 @@ if(track && track.getCapabilities && track.getCapabilities().torch){
 }
 }
 
-/* Manual Frame Capture: Scans Barcode AND Printed Text Simultaneously */
 async function manualCaptureFrame(){
 const video = document.getElementById("cameraVideo");
 if(!video || video.readyState < 2){
@@ -657,13 +1059,12 @@ if(!video || video.readyState < 2){
 
 showMessage("Scanning barcode & reading printed label text...");
 try{
-  const canvas = createSharpenedCanvasFromSource(video, video.videoWidth || 1920, video.videoHeight || 1080);
+  const canvas = captureSharpROI(video, false);
 
   let foundBarcode = null;
-  if("BarcodeDetector" in window){
+  if(nativeDetector){
     try{
-      const detector = new BarcodeDetector();
-      const results = await detector.detect(canvas);
+      const results = await nativeDetector.detect(canvas);
       if(results && results.length){
         results.sort((a, b) => (b.rawValue || "").length - (a.rawValue || "").length);
         foundBarcode = results[0].rawValue;
@@ -671,13 +1072,12 @@ try{
     }catch(e){}
   }
 
-  if(!foundBarcode && window.ZXing && ZXing.BrowserMultiFormatReader){
-    const hints = new Map();
-    hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-    const reader = new ZXing.BrowserMultiFormatReader(hints);
+  if(!foundBarcode && zxingReader){
     try{
-      const res = await reader.decodeFromImageUrl(canvas.toDataURL("image/jpeg", 0.95));
-      if(res) foundBarcode = res.getText ? res.getText() : res.text;
+      const luminanceSource = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
+      const binaryBitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminanceSource));
+      const res = zxingReader.decodeBitmap(binaryBitmap);
+      if(res) foundBarcode = res.getText();
     }catch(e){}
   }
 
@@ -687,13 +1087,11 @@ try{
     return;
   }
 
-  // Fallback: If barcode is blurry, read the printed L / W / P or LEN / WIDE / SHT text directly!
   const ocrText = await extractLabelTextViaOCR(canvas);
   if(ocrText){
     const ocrParsed = parseVeneerBarcode(ocrText);
     if(ocrParsed.length !== null){
-      if(ocrParsed.bundle) setValue("barcode", ocrParsed.bundle);
-      if(ocrParsed.bundle) setValue("bundleNum", ocrParsed.bundle);
+      if(ocrParsed.bundle){ setValue("barcode", ocrParsed.bundle); setValue("bundleNum", ocrParsed.bundle); }
       setValue("length", String(ocrParsed.length));
       setValue("width", String(ocrParsed.width));
       setValue("sheets", String(ocrParsed.sheets));
@@ -705,7 +1103,7 @@ try{
   }
 
   playBeep(true);
-  showMessage("Label not clear. Hold steady inside dashed box & tap Snap again.", true);
+  showMessage("Label not clear. Tap screen to focus & tap Snap again.", true);
 }catch(err){
   playBeep(true);
   showMessage("Capture processing error.", true);
@@ -714,11 +1112,14 @@ try{
 
 function stopCameraScanner(){
 torchOn = false;
-try{ if(cameraControls && cameraControls.stop) cameraControls.stop(); }catch(e){}
-cameraControls = null;
+if(scanTimer){ clearTimeout(scanTimer); scanTimer = null; }
 try{ if(zxingReader && zxingReader.reset) zxingReader.reset(); }catch(e){}
-zxingReader = null; nativeDetector = null;
-if(cameraStream){ cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
+zxingReader = null;
+nativeDetector = null;
+if(cameraStream){
+  cameraStream.getTracks().forEach(t => { try{ t.stop(); }catch(e){} });
+  cameraStream = null;
+}
 
 document.getElementById("cameraPanel").style.display = "none";
 document.getElementById("torchContainer").style.display = "none";
@@ -737,7 +1138,7 @@ const img=new Image();
 const imageURL=URL.createObjectURL(file);
 await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src=imageURL; });
 
-const canvas = createSharpenedCanvasFromSource(img, img.naturalWidth || 1920, img.naturalHeight || 1080);
+const canvas = captureSharpROI(img, true);
 
 if("BarcodeDetector" in window){
   try{
@@ -755,8 +1156,10 @@ if(!found && window.ZXing){
   hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
   const reader = new ZXing.BrowserMultiFormatReader(hints);
   try {
-    const res = await reader.decodeFromImageUrl(canvas.toDataURL("image/jpeg", 0.95));
-    if(res) found = res.getText ? res.getText() : res.text;
+    const luminanceSource = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
+    const binaryBitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminanceSource));
+    const res = reader.decodeBitmap(binaryBitmap);
+    if(res) found = res.getText();
   } catch(e){}
 }
 
@@ -793,6 +1196,12 @@ document.getElementById("storageStatus").textContent="Records saved locally";
 
 function loadData(){
 try{
+const savedLang = localStorage.getItem(STORAGE_KEY+"_lang");
+if(savedLang && translations[savedLang]){
+  currentLang = savedLang;
+  document.getElementById("langSelect").value = savedLang;
+}
+
 const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]");
 if(Array.isArray(saved)){
 items=saved.map(i=>({...i, area:calculateArea(Number(i.length),Number(i.width),Number(i.sheets))}));
@@ -841,7 +1250,8 @@ setValue("barcode",""); setValue("bundleNum",""); setValue("length",""); setValu
 
 function resetSaveButton(){
 const button=document.getElementById("saveBtn");
-button.textContent="➕ Add Bundle to Tally";
+const t = translations[currentLang];
+button.innerHTML = '➕ <span id="lblAddBundle">' + t.addBundle + '</span>';
 button.style.background="#238b57";
 }
 
@@ -857,7 +1267,8 @@ setValue("length",item.length);
 setValue("width",item.width);
 setValue("sheets",item.sheets);
 editingBarcode=code;
-document.getElementById("saveBtn").textContent="💾 Update Bundle";
+const t = translations[currentLang];
+document.getElementById("saveBtn").innerHTML = '💾 <span id="lblUpdateBundle">' + t.updateBundle.replace('💾 ','') + '</span>';
 document.getElementById("saveBtn").style.background="#c97816";
 }
 
@@ -879,6 +1290,7 @@ const query=getValue("searchFilter").toLowerCase();
 body.replaceChildren();
 const filtered=items.filter(i=>[i.pallet,i.company,i.specie,i.barcode,i.bundle].join(" ").toLowerCase().includes(query));
 
+const t = translations[currentLang];
 filtered.forEach(item=>{
 const row=document.createElement("tr");
 [item.pallet, item.specie, item.barcode, item.length+"×"+item.width+"×"+item.sheets, item.area.toFixed(2)].forEach((val)=>{
@@ -888,9 +1300,9 @@ row.appendChild(cell);
 });
 const actions=document.createElement("td");
 const edit=document.createElement("button");
-edit.className="btn-action btn-row-edit"; edit.textContent="Edit"; edit.onclick=()=>editItem(item.barcode);
+edit.className="btn-action btn-row-edit"; edit.textContent=t.editBtn; edit.onclick=()=>editItem(item.barcode);
 const del=document.createElement("button");
-del.className="btn-action btn-row-del"; del.textContent="Del"; del.onclick=()=>deleteItem(item.barcode);
+del.className="btn-action btn-row-del"; del.textContent=t.delBtn; del.onclick=()=>deleteItem(item.barcode);
 actions.append(edit,del);
 row.appendChild(actions);
 body.appendChild(row);
@@ -899,9 +1311,10 @@ body.appendChild(row);
 
 function updateTotals(){
 const total=items.reduce((sum,i)=>sum+i.area,0);
-document.getElementById("palletDisplay").textContent="Current Pallet: "+(getValue("palletNum")||"Pallet 01");
+const t = translations[currentLang];
+document.getElementById("palletDisplay").textContent=t.palletDisplay+(getValue("palletNum")||"Pallet 01");
 document.getElementById("totalM2").textContent=total.toFixed(2)+" m²";
-document.getElementById("totalBundles").textContent="Total Bundles: "+items.length;
+document.getElementById("totalBundles").textContent=t.totalBundles+items.length;
 document.getElementById("tableGrandTotal").textContent=total.toFixed(2)+" m²";
 }
 
@@ -931,7 +1344,8 @@ return csvRows.join("\n");
 
 function exportExcel(){
 if(!items.length){ alert("No items to export."); return; }
-document.getElementById("modalTitle").textContent = "📊 Export Excel / Spreadsheet Data";
+const t = translations[currentLang];
+document.getElementById("modalTitle").textContent = t.modalTitle;
 document.getElementById("csvPreview").value = getCSVString();
 document.getElementById("exportModal").style.display="block";
 }
@@ -951,7 +1365,8 @@ const total = items.reduce((sum,i)=>sum+i.area,0);
 summary += "\n----------------------------------------\n";
 summary += `GRAND TOTAL: ${total.toFixed(2)} m² (${items.length} Bundles)\n`;
 
-document.getElementById("modalTitle").textContent = "📄 Printable Report Summary";
+const t = translations[currentLang];
+document.getElementById("modalTitle").textContent = t.modalTitle;
 document.getElementById("csvPreview").value = summary;
 document.getElementById("exportModal").style.display="block";
 }
@@ -988,7 +1403,10 @@ return;
 copyCSVToClipboard();
 }
 
-loadData(); renderTable(); updateTotals();
+loadData(); 
+changeLanguage(currentLang);
+renderTable(); 
+updateTotals();
 </script>
 </body>
 </html>
