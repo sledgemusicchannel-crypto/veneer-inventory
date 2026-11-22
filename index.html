@@ -210,7 +210,7 @@ Align barcode with red laser line inside box. Tap screen to re-focus close-up.
 </div>
 </div>
 
-<input type="file" id="cameraInput" accept="image/*" capture="environment"
+<input type="file" id="cameraInput" accept="image/*"
 style="display:none" onchange="handleImageScan(event)">
 
 <button type="button" class="btn-add" id="photoScanBtn" onclick="triggerPhotoScan()" style="margin-top:6px">
@@ -753,7 +753,7 @@ try{
 const roiCanvas = document.createElement("canvas");
 const roiCtx = roiCanvas.getContext("2d", { willReadFrequently: true });
 
-function buildProcessedCanvas(sourceEl, fullFrame = false, contrast = 1.65, maxDim = 1600){
+function buildProcessedCanvas(sourceEl, fullFrame = false, contrast = 1.65, maxDim = 1200){
 let srcW = sourceEl.videoWidth || sourceEl.naturalWidth || sourceEl.width || 1280;
 let srcH = sourceEl.videoHeight || sourceEl.naturalHeight || sourceEl.height || 720;
 
@@ -791,7 +791,7 @@ return outCanvas;
 }
 
 function captureSharpROI(sourceEl, fullFrame = false){
-const processed = buildProcessedCanvas(sourceEl, fullFrame, 1.65, 1600);
+const processed = buildProcessedCanvas(sourceEl, fullFrame, 1.65, 1200);
 roiCanvas.width = processed.width;
 roiCanvas.height = processed.height;
 roiCtx.drawImage(processed, 0, 0);
@@ -888,7 +888,10 @@ try{
 }
 
 function triggerPhotoScan(){
-document.getElementById("cameraInput").click();
+const input = document.getElementById("cameraInput");
+if(!input) return;
+input.value = "";
+input.click();
 }
 
 function getUserMediaWithTimeout(constraints, timeoutMs = 3500){
@@ -1008,7 +1011,7 @@ return new Promise((resolve, reject) => {
 });
 }
 
-/* BULLETPROOF HIGH-SPEED CAMERA INITIALIZATION WITH AUTOMATIC PHOTO SCAN FALLBACK */
+/* BULLETPROOF HIGH-SPEED CAMERA INITIALIZATION */
 async function startCameraScanner(){
 const panel=document.getElementById("cameraPanel");
 const video=document.getElementById("cameraVideo");
@@ -1018,8 +1021,7 @@ if(guide) guide.classList.remove("locked");
 stopCameraScanner();
 
 if(liveCameraBlocked){
-  showMessage("Live stream unavailable in app. Opening Take Photo to Scan...");
-  triggerPhotoScan();
+  showMessage("Live scanner blocked in app wrapper. Tap 'Take Photo to Scan' below.", true);
   return;
 }
 
@@ -1035,8 +1037,7 @@ try{
 }catch(err){
   stopCameraScanner();
   liveCameraBlocked = true;
-  showMessage("Live scanner stuck in app wrapper. Tap 'Take Photo to Scan' (opening now)...", true);
-  triggerPhotoScan();
+  showMessage("Live scanner blocked in app wrapper. Tap 'Take Photo to Scan' below.", true);
   return;
 }
 
@@ -1049,8 +1050,7 @@ try{
 }catch(e){
   stopCameraScanner();
   liveCameraBlocked = true;
-  showMessage("Live preview blocked in app wrapper. Tap 'Take Photo to Scan' (opening now)...", true);
-  triggerPhotoScan();
+  showMessage("Live preview blocked in app wrapper. Tap 'Take Photo to Scan' below.", true);
   return;
 }
 
@@ -1284,18 +1284,27 @@ return null;
 
 async function handleImageScan(event){
 const file=event.target.files&&event.target.files[0];
-if(!file) return;
+if(!file || file.size === 0){
+  showMessage("No photo received. Use Gallery/Camera picker and confirm photo.", true);
+  event.target.value="";
+  return;
+}
 showMessage("Reading photo (Barcode + Label OCR)...");
 let found=null;
 let imageURL=null;
 try{
 const img=new Image();
 imageURL=URL.createObjectURL(file);
-await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src=imageURL; });
+await new Promise((res,rej)=>{
+  const timer = setTimeout(() => rej(new Error("ImageLoadTimeout")), 8000);
+  img.onload = () => { clearTimeout(timer); res(); };
+  img.onerror = (e) => { clearTimeout(timer); rej(e); };
+  img.src = imageURL;
+});
 
-const fullHighContrast = buildProcessedCanvas(img, true, 1.65, 1800);
-const fullNatural = buildProcessedCanvas(img, true, 1.0, 1800);
-const centerCrop = buildProcessedCanvas(img, false, 1.75, 1600);
+const fullHighContrast = buildProcessedCanvas(img, true, 1.55, 1200);
+const fullNatural = buildProcessedCanvas(img, true, 1.0, 1200);
+const centerCrop = buildProcessedCanvas(img, false, 1.7, 1200);
 
 found = await detectBarcodeFromCanvas(fullHighContrast)
      || await detectBarcodeFromCanvas(fullNatural)
@@ -1304,7 +1313,7 @@ found = await detectBarcodeFromCanvas(fullHighContrast)
 if(found){
   await applyScannedBarcode(found, fullHighContrast);
 } else {
-  showMessage("No barcode line found—reading printed label numbers via OCR...");
+  showMessage("Reading printed label numbers via OCR...");
   const ocrText = await extractLabelTextViaOCR(centerCrop) || await extractLabelTextViaOCR(fullHighContrast);
   const ocrParsed = ocrText ? parseVeneerBarcode(ocrText) : { length: null, width: null, sheets: null, bundle: null };
 
@@ -1320,17 +1329,17 @@ if(found){
     if(ocrParsed.bundle){
       setValue("barcode", ocrParsed.bundle);
       setValue("bundleNum", ocrParsed.bundle);
-      showMessage("Found ID " + ocrParsed.bundle + " in photo. Please enter Length, Width, and Sheets.", true);
+      showMessage("Found ID " + ocrParsed.bundle + " in photo. Enter Length, Width, and Sheets.", true);
       playBeep(false);
       document.getElementById("length").focus();
     } else {
-      showMessage("Could not read barcode or dimensions from photo. Retake closer or type manually.",true);
+      showMessage("Label unreadable in photo. Snap closer in good light or type manually.",true);
       playBeep(true);
     }
   }
 }
 }catch(e){
-  showMessage("Failed processing photo. Try retaking or typing manually.",true);
+  showMessage("Photo could not be decoded. Snap closer or type manually.",true);
   playBeep(true);
 }finally{
   if(imageURL){ try{ URL.revokeObjectURL(imageURL); }catch(err){} }
