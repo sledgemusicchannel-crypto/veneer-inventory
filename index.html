@@ -213,7 +213,7 @@ Align barcode with red laser line inside box. Tap screen to re-focus close-up.
 <input type="file" id="cameraInput" accept="image/*" capture="environment"
 style="display:none" onchange="handleImageScan(event)">
 
-<button type="button" class="btn-scan" onclick="document.getElementById('cameraInput').click()" style="margin-top:6px">
+<button type="button" class="btn-add" id="photoScanBtn" onclick="triggerPhotoScan()" style="margin-top:6px">
 📸 <span id="lblTakePhoneScan">TAKE PHOTO TO SCAN (BACKUP)</span>
 </button>
 </div>
@@ -325,6 +325,7 @@ const SETTINGS_KEY="veneerTallyPro_settings_v13";
 let items=[];
 let editingBarcode=null;
 let currentLang="en";
+let liveCameraBlocked=false;
 
 const translations = {
   en: {
@@ -685,7 +686,7 @@ const shtMatch = norm.match(/(\d+)\s*(?:SHT|SHEETS?|PCS|P)\b/i) || norm.match(/\
 
 if(lenMatch && widMatch && shtMatch){
   result.length = cleanDim(lenMatch[1]);
-  result.width = cleanDim(lenMatch[1]);
+  result.width = cleanDim(widMatch[1]);
   result.sheets = Number(shtMatch[1]);
   result.source = "TIMBERplus Text Standard";
   if(result.length && result.width && result.sheets > 0) return result;
@@ -752,28 +753,48 @@ try{
 const roiCanvas = document.createElement("canvas");
 const roiCtx = roiCanvas.getContext("2d", { willReadFrequently: true });
 
-function captureSharpROI(sourceEl, fullFrame = false){
-const srcW = sourceEl.videoWidth || sourceEl.naturalWidth || 1280;
-const srcH = sourceEl.videoHeight || sourceEl.naturalHeight || 720;
+function buildProcessedCanvas(sourceEl, fullFrame = false, contrast = 1.65, maxDim = 1600){
+let srcW = sourceEl.videoWidth || sourceEl.naturalWidth || sourceEl.width || 1280;
+let srcH = sourceEl.videoHeight || sourceEl.naturalHeight || sourceEl.height || 720;
 
 const cropW = fullFrame ? srcW : Math.round(srcW * 0.88);
 const cropH = fullFrame ? srcH : Math.round(srcH * 0.48);
 const cropX = fullFrame ? 0 : Math.round((srcW - cropW) / 2);
 const cropY = fullFrame ? 0 : Math.round((srcH - cropH) / 2);
 
-roiCanvas.width = cropW;
-roiCanvas.height = cropH;
-roiCtx.drawImage(sourceEl, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-
-const imgData = roiCtx.getImageData(0, 0, cropW, cropH);
-const data = imgData.data;
-for(let i = 0; i < data.length; i += 4){
-  const luma = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-  let enhanced = (luma - 128) * 1.65 + 128;
-  enhanced = enhanced < 0 ? 0 : (enhanced > 255 ? 255 : enhanced);
-  data[i] = data[i + 1] = data[i + 2] = enhanced;
+let outW = cropW;
+let outH = cropH;
+if(maxDim && Math.max(outW, outH) > maxDim){
+  const scale = maxDim / Math.max(outW, outH);
+  outW = Math.max(1, Math.round(outW * scale));
+  outH = Math.max(1, Math.round(outH * scale));
 }
-roiCtx.putImageData(imgData, 0, 0);
+
+const outCanvas = document.createElement("canvas");
+outCanvas.width = outW;
+outCanvas.height = outH;
+const outCtx = outCanvas.getContext("2d", { willReadFrequently: true });
+outCtx.drawImage(sourceEl, cropX, cropY, cropW, cropH, 0, 0, outW, outH);
+
+if(contrast && contrast !== 1){
+  const imgData = outCtx.getImageData(0, 0, outW, outH);
+  const data = imgData.data;
+  for(let i = 0; i < data.length; i += 4){
+    const luma = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    let enhanced = (luma - 128) * contrast + 128;
+    enhanced = enhanced < 0 ? 0 : (enhanced > 255 ? 255 : enhanced);
+    data[i] = data[i + 1] = data[i + 2] = enhanced;
+  }
+  outCtx.putImageData(imgData, 0, 0);
+}
+return outCanvas;
+}
+
+function captureSharpROI(sourceEl, fullFrame = false){
+const processed = buildProcessedCanvas(sourceEl, fullFrame, 1.65, 1600);
+roiCanvas.width = processed.width;
+roiCanvas.height = processed.height;
+roiCtx.drawImage(processed, 0, 0);
 return roiCanvas;
 }
 
@@ -866,28 +887,24 @@ try{
 }catch(e){}
 }
 
-function formatMediaError(err){
-if(!err) return "UnknownWebViewError";
-const parts = [];
-if(err.name) parts.push(err.name);
-if(err.message) parts.push(err.message);
-return parts.length ? parts.join(": ") : String(err);
+function triggerPhotoScan(){
+document.getElementById("cameraInput").click();
 }
 
-function getUserMediaWithTimeout(constraints, timeoutMs = 5500){
+function getUserMediaWithTimeout(constraints, timeoutMs = 3500){
 return new Promise((resolve, reject) => {
   let done = false;
   const timer = setTimeout(() => {
     if(done) return;
     done = true;
-    reject(new Error("WebViewGetUserMediaTimeout"));
+    reject(new Error("WebViewCameraBlocked"));
   }, timeoutMs);
 
   const callMedia = (navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
     ? navigator.mediaDevices.getUserMedia(constraints)
     : new Promise((res, rej) => {
         const legacy = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
-        if(!legacy) return rej(new Error("NoGetUserMediaAPI"));
+        if(!legacy) return rej(new Error("NoCameraAPI"));
         legacy.call(navigator, constraints, res, rej);
       });
 
@@ -905,7 +922,7 @@ return new Promise((resolve, reject) => {
       if(done) return;
       done = true;
       clearTimeout(timer);
-      reject(err || new Error("EmptyGetUserMediaRejection"));
+      reject(err || new Error("CameraPermissionDenied"));
     }
   );
 });
@@ -924,14 +941,11 @@ let stream = null;
 
 for(const constraints of attempts){
   try{
-    stream = await getUserMediaWithTimeout(constraints, 5500);
+    stream = await getUserMediaWithTimeout(constraints, 3500);
     if(stream) break;
   }catch(err){
     lastErr = err;
-    const msg = formatMediaError(err);
-    if(/NotAllowedError|PermissionDeniedError|SecurityError|WebViewGetUserMediaTimeout/i.test(msg)){
-      break;
-    }
+    break;
   }
 }
 
@@ -945,7 +959,7 @@ try{
     const rear = devices.find(d => d.kind === "videoinput" && /back|rear|environment/i.test(d.label));
     if(rear && rear.deviceId){
       stream.getTracks().forEach(t => t.stop());
-      stream = await getUserMediaWithTimeout({ audio: false, video: { deviceId: { exact: rear.deviceId } } }, 5500);
+      stream = await getUserMediaWithTimeout({ audio: false, video: { deviceId: { exact: rear.deviceId } } }, 3500);
     }
   }
 }catch(e){}
@@ -987,14 +1001,14 @@ return new Promise((resolve, reject) => {
       settled = true;
       reject(new Error("WebViewVideoPlayerStalled"));
     }
-  }, 4500);
+  }, 3500);
 
   video.onloadedmetadata = finishPlay;
   video.oncanplay = finishPlay;
 });
 }
 
-/* BULLETPROOF HIGH-SPEED CAMERA INITIALIZATION */
+/* BULLETPROOF HIGH-SPEED CAMERA INITIALIZATION WITH AUTOMATIC PHOTO SCAN FALLBACK */
 async function startCameraScanner(){
 const panel=document.getElementById("cameraPanel");
 const video=document.getElementById("cameraVideo");
@@ -1003,20 +1017,26 @@ if(guide) guide.classList.remove("locked");
 
 stopCameraScanner();
 
+if(liveCameraBlocked){
+  showMessage("Live stream unavailable in app. Opening Take Photo to Scan...");
+  triggerPhotoScan();
+  return;
+}
+
 panel.style.display="block";
 document.getElementById("startScanBtn").style.display="none";
 document.getElementById("stopScanBtn").style.display="block";
 scanBusy=false;
-showMessage("Requesting camera permission in app...");
+showMessage("Opening live scanner...");
 
 let stream = null;
 try{
   stream = await getBestRearCameraStream();
 }catch(err){
   stopCameraScanner();
-  const detail = formatMediaError(err);
-  showMessage("App WebView blocked camera (" + detail + "). Check wrapper WebChromeClient permission or use Photo Backup.", true);
-  playBeep(true);
+  liveCameraBlocked = true;
+  showMessage("Live scanner stuck in app wrapper. Tap 'Take Photo to Scan' (opening now)...", true);
+  triggerPhotoScan();
   return;
 }
 
@@ -1028,8 +1048,9 @@ try{
   showMessage("Camera active. Align barcode with red line.");
 }catch(e){
   stopCameraScanner();
-  showMessage("App video player blocked stream (" + formatMediaError(e) + "). Use Photo Backup.", true);
-  playBeep(true);
+  liveCameraBlocked = true;
+  showMessage("Live preview blocked in app wrapper. Tap 'Take Photo to Scan' (opening now)...", true);
+  triggerPhotoScan();
   return;
 }
 
@@ -1224,62 +1245,97 @@ document.getElementById("stopScanBtn").style.display = "none";
 scanBusy = false;
 }
 
-async function handleImageScan(event){
-const file=event.target.files&&event.target.files[0];
-if(!file) return;
-showMessage("Processing label photo (Barcode + Text)...");
-let found=null;
-try{
-const img=new Image();
-const imageURL=URL.createObjectURL(file);
-await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src=imageURL; });
-
-const canvas = captureSharpROI(img, true);
-
+async function detectBarcodeFromCanvas(canvas){
 if("BarcodeDetector" in window){
   try{
-    const detector=new BarcodeDetector();
-    const results=await detector.detect(canvas);
-    if(results&&results.length){
+    const detector = new BarcodeDetector({
+      formats: ['code_128', 'code_39', 'code_93', 'codabar', 'ean_13', 'ean_8', 'itf', 'qr_code', 'data_matrix']
+    });
+    const results = await detector.detect(canvas);
+    if(results && results.length){
       results.sort((a, b) => (b.rawValue || "").length - (a.rawValue || "").length);
-      found=results[0].rawValue;
+      return results[0].rawValue;
     }
-  }catch(e){}
-}
-
-if(!found && window.ZXing){
-  const hints = new Map();
-  hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-  const reader = new ZXing.BrowserMultiFormatReader(hints);
-  try {
-    const luminanceSource = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
-    const binaryBitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminanceSource));
-    const res = reader.decodeBitmap(binaryBitmap);
-    if(res) found = res.getText();
-  } catch(e){}
-}
-
-if(found){
-  await applyScannedBarcode(found, canvas);
-} else {
-  const ocrText = await extractLabelTextViaOCR(canvas);
-  const ocrParsed = ocrText ? parseVeneerBarcode(ocrText) : { length: null };
-  if(ocrParsed.length !== null){
-    if(ocrParsed.bundle){ setValue("barcode", ocrParsed.bundle); setValue("bundleNum", ocrParsed.bundle); }
-    setValue("length", String(ocrParsed.length));
-    setValue("width", String(ocrParsed.width));
-    setValue("sheets", String(ocrParsed.sheets));
-    showMessage("Captured via Photo OCR: " + ocrParsed.length + " × " + ocrParsed.width + " × " + ocrParsed.sheets);
-    playBeep(false);
-  } else {
-    showMessage("No clear barcode or dimensions detected in photo.",true);
-    playBeep(true);
+  }catch(e){
+    try{
+      const fallbackDet = new BarcodeDetector();
+      const results = await fallbackDet.detect(canvas);
+      if(results && results.length){
+        results.sort((a, b) => (b.rawValue || "").length - (a.rawValue || "").length);
+        return results[0].rawValue;
+      }
+    }catch(err){}
   }
 }
 
-URL.revokeObjectURL(imageURL);
-}catch(e){ showMessage("Failed processing photo.",true); }
-event.target.value="";
+if(window.ZXing){
+  try{
+    const hints = new Map();
+    hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+    const reader = new ZXing.BrowserMultiFormatReader(hints);
+    const luminanceSource = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
+    const binaryBitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminanceSource));
+    const res = reader.decodeBitmap(binaryBitmap);
+    if(res) return res.getText();
+  }catch(e){}
+}
+return null;
+}
+
+async function handleImageScan(event){
+const file=event.target.files&&event.target.files[0];
+if(!file) return;
+showMessage("Reading photo (Barcode + Label OCR)...");
+let found=null;
+let imageURL=null;
+try{
+const img=new Image();
+imageURL=URL.createObjectURL(file);
+await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src=imageURL; });
+
+const fullHighContrast = buildProcessedCanvas(img, true, 1.65, 1800);
+const fullNatural = buildProcessedCanvas(img, true, 1.0, 1800);
+const centerCrop = buildProcessedCanvas(img, false, 1.75, 1600);
+
+found = await detectBarcodeFromCanvas(fullHighContrast)
+     || await detectBarcodeFromCanvas(fullNatural)
+     || await detectBarcodeFromCanvas(centerCrop);
+
+if(found){
+  await applyScannedBarcode(found, fullHighContrast);
+} else {
+  showMessage("No barcode line found—reading printed label numbers via OCR...");
+  const ocrText = await extractLabelTextViaOCR(centerCrop) || await extractLabelTextViaOCR(fullHighContrast);
+  const ocrParsed = ocrText ? parseVeneerBarcode(ocrText) : { length: null, width: null, sheets: null, bundle: null };
+
+  if(ocrParsed.length !== null){
+    if(ocrParsed.bundle){ setValue("barcode", ocrParsed.bundle); setValue("bundleNum", ocrParsed.bundle); }
+    setValue("length", String(ocrParsed.length));
+    if(ocrParsed.width) setValue("width", String(ocrParsed.width));
+    if(ocrParsed.sheets) setValue("sheets", String(ocrParsed.sheets));
+    showMessage("Captured via Photo OCR: " + ocrParsed.length + " × " + (ocrParsed.width || "?") + " × " + (ocrParsed.sheets || 1));
+    playBeep(false);
+    document.getElementById(ocrParsed.width ? "sheets" : "width").focus();
+  } else {
+    if(ocrParsed.bundle){
+      setValue("barcode", ocrParsed.bundle);
+      setValue("bundleNum", ocrParsed.bundle);
+      showMessage("Found ID " + ocrParsed.bundle + " in photo. Please enter Length, Width, and Sheets.", true);
+      playBeep(false);
+      document.getElementById("length").focus();
+    } else {
+      showMessage("Could not read barcode or dimensions from photo. Retake closer or type manually.",true);
+      playBeep(true);
+    }
+  }
+}
+}catch(e){
+  showMessage("Failed processing photo. Try retaking or typing manually.",true);
+  playBeep(true);
+}finally{
+  if(imageURL){ try{ URL.revokeObjectURL(imageURL); }catch(err){} }
+  event.target.value="";
+}
 }
 
 function saveData(){
