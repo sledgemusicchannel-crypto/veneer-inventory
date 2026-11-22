@@ -103,6 +103,10 @@ small{color:#596970}
   border-color: #00ff88;
   box-shadow: 0 0 18px rgba(0, 255, 136, 0.7), 0 0 0 9999px rgba(0, 0, 0, 0.45);
 }
+.scan-guide-frame.repeat-warn {
+  border-color: #ff1744;
+  box-shadow: 0 0 20px rgba(255, 23, 68, 0.85), 0 0 0 9999px rgba(0, 0, 0, 0.45);
+}
 .scan-reticle {
   position: absolute;
   top: 50%;
@@ -729,27 +733,86 @@ return roundArea(length*width*sheets/10000);
 }
 
 let audioContext=null;
-function playBeep(error=false){
-try{
+function getAudioCtx(){
 const AudioCtx=window.AudioContext||window.webkitAudioContext;
-if(!AudioCtx){ if(navigator.vibrate) navigator.vibrate(error?[180,80,180]:120); return; }
+if(!AudioCtx) return null;
 audioContext=audioContext||new AudioCtx();
 if(audioContext.state==="suspended"){ audioContext.resume(); }
-const osc=audioContext.createOscillator();
-const gain=audioContext.createGain();
-osc.type="sine";
-osc.frequency.value=error?330:1050;
-gain.gain.setValueAtTime(0.0001,audioContext.currentTime);
-gain.gain.exponentialRampToValueAtTime(0.35,audioContext.currentTime+0.015);
-gain.gain.exponentialRampToValueAtTime(0.0001,audioContext.currentTime+0.18);
-osc.connect(gain);
-gain.connect(audioContext.destination);
-osc.start();
-osc.stop(audioContext.currentTime+0.2);
-if(navigator.vibrate) navigator.vibrate(error?[180,80,180]:60);
-}catch(e){
-if(navigator.vibrate) navigator.vibrate(error?[180,80,180]:120);
+return audioContext;
 }
+
+function triggerTonePulse(ctx,freq,startTime,duration,peakGain=1.0){
+const osc1=ctx.createOscillator();
+const osc2=ctx.createOscillator();
+const gain=ctx.createGain();
+const comp=ctx.createDynamicsCompressor();
+
+osc1.type="square";
+osc1.frequency.setValueAtTime(freq,startTime);
+osc2.type="triangle";
+osc2.frequency.setValueAtTime(freq*2,startTime);
+
+comp.threshold.setValueAtTime(-18,startTime);
+comp.knee.setValueAtTime(10,startTime);
+comp.ratio.setValueAtTime(12,startTime);
+comp.attack.setValueAtTime(0.002,startTime);
+comp.release.setValueAtTime(0.08,startTime);
+
+gain.gain.setValueAtTime(0.0001,startTime);
+gain.gain.exponentialRampToValueAtTime(peakGain,startTime+0.012);
+gain.gain.setValueAtTime(peakGain,startTime+Math.max(0.02,duration-0.03));
+gain.gain.exponentialRampToValueAtTime(0.0001,startTime+duration);
+
+osc1.connect(gain);
+osc2.connect(gain);
+gain.connect(comp);
+comp.connect(ctx.destination);
+
+osc1.start(startTime);
+osc2.start(startTime);
+osc1.stop(startTime+duration+0.01);
+osc2.stop(startTime+duration+0.01);
+}
+
+/* LOUD UROVO-STYLE SCAN CONFIRMATION / ERROR BEEP */
+function playBeep(error=false){
+try{
+const ctx=getAudioCtx();
+if(!ctx){ if(navigator.vibrate) navigator.vibrate(error?[220,90,220]:110); return; }
+const now=ctx.currentTime;
+if(error){
+  triggerTonePulse(ctx,380,now,0.24,1.0);
+  if(navigator.vibrate) navigator.vibrate([220,90,220]);
+} else {
+  triggerTonePulse(ctx,1480,now,0.18,1.0);
+  if(navigator.vibrate) navigator.vibrate(90);
+}
+}catch(e){
+if(navigator.vibrate) navigator.vibrate(error?[220,90,220]:110);
+}
+}
+
+/* DISTINCT DOUBLE-BUZZ ALARM WHEN SAME BARCODE IS SCANNED TWICE */
+function playRepeatBeep(){
+try{
+const ctx=getAudioCtx();
+if(!ctx){ if(navigator.vibrate) navigator.vibrate([200,80,200,80,250]); return; }
+const now=ctx.currentTime;
+triggerTonePulse(ctx,520,now,0.15,1.0);
+triggerTonePulse(ctx,320,now+0.18,0.22,1.0);
+triggerTonePulse(ctx,520,now+0.44,0.15,1.0);
+triggerTonePulse(ctx,320,now+0.62,0.24,1.0);
+if(navigator.vibrate) navigator.vibrate([200,80,200,80,250]);
+}catch(e){
+if(navigator.vibrate) navigator.vibrate([200,80,200,80,250]);
+}
+}
+
+function isDuplicateBarcode(code){
+const normCode=String(code||"").trim().toLowerCase();
+if(!normCode) return false;
+if(lastScannedCode && lastScannedCode.trim().toLowerCase()===normCode) return true;
+return items.some(it => String(it.barcode||"").trim().toLowerCase()===normCode);
 }
 
 function cleanDim(val){
@@ -882,9 +945,28 @@ return roiCanvas;
 async function applyScannedBarcode(raw, snapshotCanvas = null){
 const code = String(raw || "").trim();
 if(!code){ playBeep(true); showMessage("Empty barcode returned.",true); return; }
-const guide = document.getElementById("scanGuideFrame");
-if(guide) guide.classList.add("locked");
 
+const guide = document.getElementById("scanGuideFrame");
+const repeated = isDuplicateBarcode(code);
+
+if(repeated){
+  if(guide){
+    guide.classList.remove("locked");
+    guide.classList.add("repeat-warn");
+    setTimeout(() => guide.classList.remove("repeat-warn"), 1500);
+  }
+  playRepeatBeep();
+  showMessage("⚠️ DUPLICATE / REPEAT BARCODE DETECTED: " + code + " was already scanned!", true);
+  lastScannedCode = code;
+  return;
+}
+
+if(guide){
+  guide.classList.remove("repeat-warn");
+  guide.classList.add("locked");
+}
+
+lastScannedCode = code;
 setValue("barcode", code);
 let parsed = parseVeneerBarcode(code);
 
@@ -1082,7 +1164,10 @@ if(video){
   video.srcObject = null;
 }
 const guide = document.getElementById("scanGuideFrame");
-if(guide) guide.classList.remove("locked");
+if(guide){
+  guide.classList.remove("locked");
+  guide.classList.remove("repeat-warn");
+}
 document.getElementById("cameraPanel").style.display = "none";
 document.getElementById("torchContainer").style.display = "none";
 document.getElementById("startScanBtn").style.display = "flex";
@@ -1119,7 +1204,6 @@ try{
   }
 
   if(code){
-    lastScannedCode = code;
     scanCooldownUntil = Date.now() + 1800;
     await applyScannedBarcode(code, roi);
     setTimeout(() => {
@@ -1136,6 +1220,7 @@ try{
 /* BULLETPROOF HIGH-SPEED CAMERA INITIALIZATION */
 async function startCameraScanner(){
 stopCameraScanner();
+getAudioCtx();
 
 // Show modal with Open Netlify + Install App buttons immediately on camera launch
 openCameraFallbackModal("Launching camera scanner:");
@@ -1409,7 +1494,10 @@ playBeep(false);
 if(cameraStream){
   scanCooldownUntil = 0;
   const guide = document.getElementById("scanGuideFrame");
-  if(guide) guide.classList.remove("locked");
+  if(guide){
+    guide.classList.remove("locked");
+    guide.classList.remove("repeat-warn");
+  }
 } else {
   document.getElementById("barcode").focus();
 }
@@ -1476,6 +1564,7 @@ function clearAll(){
 if(items.length === 0) return;
 if(!confirm("Clear all tally records?")) return;
 items = [];
+lastScannedCode = "";
 clearBundleInputs();
 saveToStorage();
 updateTotals();
