@@ -320,6 +320,8 @@ VeneerTally Pro · TIMBERplus, SF &amp; UROVO Hardware Optimized
 
 const STORAGE_KEY="veneerTallyPro_records_v13";
 const SETTINGS_KEY="veneerTallyPro_settings_v13";
+const PWA_FALLBACK_URL="https://veneertally-pro.netlify.app";
+const CAMERA_LAUNCH_FALLBACK_MSG="Opening https://veneertally-pro.netlify.app in their mobile browser (such as Chrome on Android or Safari on iPhone) and saving it to their Home Screen (Add to Home screen / Install app) for browser-based camera access.";
 
 let items=[];
 let editingBarcode=null;
@@ -755,7 +757,6 @@ function captureSharpROI(sourceEl, fullFrame = false){
 const srcW = sourceEl.videoWidth || sourceEl.naturalWidth || 1280;
 const srcH = sourceEl.videoHeight || sourceEl.naturalHeight || 720;
 
-// Crop strictly to the center reticle box (88% width x 48% height) for ultra-fast decoding
 const cropW = fullFrame ? srcW : Math.round(srcW * 0.88);
 const cropH = fullFrame ? srcH : Math.round(srcH * 0.48);
 const cropX = fullFrame ? 0 : Math.round((srcW - cropW) / 2);
@@ -765,12 +766,10 @@ roiCanvas.width = cropW;
 roiCanvas.height = cropH;
 roiCtx.drawImage(sourceEl, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
-// Fast native pixel contrast stretch (no slow CSS filter overhead)
 const imgData = roiCtx.getImageData(0, 0, cropW, cropH);
 const data = imgData.data;
 for(let i = 0; i < data.length; i += 4){
   const luma = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-  // Stretch contrast around midpoint 128 for crisp barcode edges
   let enhanced = (luma - 128) * 1.65 + 128;
   enhanced = enhanced < 0 ? 0 : (enhanced > 255 ? 255 : enhanced);
   data[i] = data[i + 1] = data[i + 2] = enhanced;
@@ -830,6 +829,15 @@ let nativeDetector=null;
 let scanBusy=false;
 let torchOn=false;
 let scanTimer=null;
+let zeroFrameCheckTimer=null;
+
+function triggerCameraLaunchFallback(reasonText){
+  const msg = reasonText ? (reasonText + " " + CAMERA_LAUNCH_FALLBACK_MSG) : CAMERA_LAUNCH_FALLBACK_MSG;
+  showMessage(msg, true);
+  try{
+    alert(msg);
+  }catch(e){}
+}
 
 /* MACRO / CLOSE-UP FOCUS BOOSTER */
 async function applyMacroFocus(track){
@@ -841,11 +849,9 @@ try{
     adv.focusMode = "continuous";
   }
   if(caps.focusDistance && typeof caps.focusDistance.min === "number"){
-    // Bias slightly above minimum macro distance for 8-20cm sticker scanning
     adv.focusDistance = Math.min(caps.focusDistance.max, caps.focusDistance.min + 0.08);
   }
   if(caps.zoom){
-    // Slight 1.35x optical/sensor crop brings barcodes closer without pixelation
     adv.zoom = Math.min(caps.zoom.max, Math.max(caps.zoom.min || 1, 1.35));
   }
   if(Object.keys(adv).length > 0){
@@ -870,52 +876,177 @@ try{
 }catch(e){}
 }
 
+async function toggleTorch(){
+if(!cameraStream) return;
+const track = cameraStream.getVideoTracks()[0];
+if(!track || !track.getCapabilities) return;
+const caps = track.getCapabilities();
+if(!caps.torch) return;
+try{
+  torchOn = !torchOn;
+  await track.applyConstraints({ advanced: [{ torch: torchOn }] });
+  showMessage(torchOn ? "Flash ON" : "Flash OFF");
+}catch(e){
+  showMessage("Flash control unavailable on this device.", true);
+}
+}
+
+async function manualCaptureFrame(){
+const video = document.getElementById("cameraVideo");
+if(!video || !cameraStream){
+  showMessage("Start camera first or use Take Photo to Scan (Backup).", true);
+  return;
+}
+try{
+  const snapCanvas = captureSharpROI(video, false);
+  let detectedCode = null;
+
+  if(nativeDetector){
+    try{
+      const codes = await nativeDetector.detect(snapCanvas);
+      if(codes && codes.length > 0 && codes[0].rawValue){
+        detectedCode = codes[0].rawValue;
+      }
+    }catch(e){}
+  }
+
+  if(!detectedCode && window.ZXing && typeof ZXing.BrowserMultiFormatReader === "function"){
+    try{
+      const tempReader = new ZXing.BrowserMultiFormatReader();
+      const result = await tempReader.decodeFromImageElement(null).catch(() => null);
+      if(!result && snapCanvas.toDataURL){
+        const img = new Image();
+        img.src = snapCanvas.toDataURL("image/png");
+        await new Promise((res) => { img.onload = res; img.onerror = res; });
+        const decoded = await tempReader.decodeFromImageElement(img).catch(() => null);
+        if(decoded && decoded.getText) detectedCode = decoded.getText();
+      }
+      tempReader.reset();
+    }catch(e){}
+  }
+
+  if(detectedCode){
+    await applyScannedBarcode(detectedCode, snapCanvas);
+  } else {
+    showMessage("Running OCR on label text...");
+    const ocrText = await extractLabelTextViaOCR(snapCanvas);
+    if(ocrText){
+      const parsed = parseVeneerBarcode(ocrText);
+      if(parsed.length !== null){
+        if(parsed.bundle) setValue("bundleNum", parsed.bundle);
+        setValue("length", String(parsed.length));
+        setValue("width", String(parsed.width));
+        setValue("sheets", String(parsed.sheets));
+        showMessage("OCR Captured: " + parsed.length + " × " + parsed.width + " × " + parsed.sheets + " (" + calculateArea(parsed.length, parsed.width, parsed.sheets) + " m²)");
+        playBeep(false);
+        document.getElementById("length").focus();
+        return;
+      }
+    }
+    showMessage("No barcode/dimensions read. Tap again or use Take Photo to Scan (Backup).", true);
+    playBeep(true);
+  }
+}catch(e){
+  showMessage("Snapshot failed. Try Take Photo to Scan (Backup).", true);
+}
+}
+
+function stopCameraScanner(){
+if(scanTimer){
+  clearInterval(scanTimer);
+  scanTimer = null;
+}
+if(zeroFrameCheckTimer){
+  clearTimeout(zeroFrameCheckTimer);
+  zeroFrameCheckTimer = null;
+}
+scanBusy = false;
+torchOn = false;
+if(zxingReader){
+  try{ zxingReader.reset(); }catch(e){}
+  zxingReader = null;
+}
+if(cameraStream){
+  try{
+    cameraStream.getTracks().forEach(t => t.stop());
+  }catch(e){}
+  cameraStream = null;
+}
+const video = document.getElementById("cameraVideo");
+if(video){
+  video.srcObject = null;
+}
+const guide = document.getElementById("scanGuideFrame");
+if(guide) guide.classList.remove("locked");
+document.getElementById("cameraPanel").style.display = "none";
+document.getElementById("torchContainer").style.display = "none";
+document.getElementById("startScanBtn").style.display = "flex";
+document.getElementById("stopScanBtn").style.display = "none";
+}
+
+async function scanVideoTick(){
+if(scanBusy || !cameraStream) return;
+const video = document.getElementById("cameraVideo");
+if(!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) return;
+scanBusy = true;
+try{
+  const roi = captureSharpROI(video, false);
+  let code = null;
+
+  if(nativeDetector){
+    try{
+      const detections = await nativeDetector.detect(roi);
+      if(detections && detections.length > 0 && detections[0].rawValue){
+        code = detections[0].rawValue;
+      }
+    }catch(e){}
+  }
+
+  if(!code && zxingReader){
+    try{
+      const img = new Image();
+      img.src = roi.toDataURL("image/png");
+      await new Promise((res) => { img.onload = res; img.onerror = res; });
+      const res = await zxingReader.decodeFromImageElement(img).catch(() => null);
+      if(res && res.getText) code = res.getText();
+    }catch(e){}
+  }
+
+  if(code){
+    stopCameraScanner();
+    await applyScannedBarcode(code, roi);
+  }
+}catch(e){
+}finally{
+  scanBusy = false;
+}
+}
+
 /* BULLETPROOF HIGH-SPEED CAMERA INITIALIZATION */
 async function startCameraScanner(){
-const panel=document.getElementById("cameraPanel");
-const video=document.getElementById("cameraVideo");
-const guide=document.getElementById("scanGuideFrame");
-if(guide) guide.classList.remove("locked");
+stopCameraScanner();
+
+// Trigger Home Screen shortcut fallback immediately when launching the scanner camera
+triggerCameraLaunchFallback("Launching camera scanner:");
 
 if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-  showMessage("Camera API requires browser mode. Open https://veneertally-pro.netlify.app in Chrome (⋮ → Add to Home screen / Install app) or Safari (Share → Add to Home Screen).", true);
   playBeep(true);
+  triggerCameraLaunchFallback("Live camera API unavailable on this device/wrapper.");
   return;
 }
 
-stopCameraScanner();
-
-panel.style.display="block";
-document.getElementById("startScanBtn").style.display="none";
-document.getElementById("stopScanBtn").style.display="block";
-scanBusy=false;
-
-// Progressive fallback constraints so camera NEVER fails to open on Android/WebView
 const constraintSets = [
-  {
-    audio: false,
-    video: {
-      facingMode: { ideal: "environment" },
-      width: { ideal: 1280 },
-      height: { ideal: 720 },
-      frameRate: { ideal: 30 }
-    }
-  },
-  {
-    audio: false,
-    video: { facingMode: "environment" }
-  },
-  {
-    audio: false,
-    video: true
-  }
+  { video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
+  { video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+  { video: { facingMode: "environment" }, audio: false },
+  { video: true, audio: false }
 ];
 
 let stream = null;
 let lastErr = null;
-for(const constraints of constraintSets){
+for(const c of constraintSets){
   try{
-    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    stream = await navigator.mediaDevices.getUserMedia(c);
     if(stream) break;
   }catch(err){
     lastErr = err;
@@ -923,489 +1054,397 @@ for(const constraints of constraintSets){
 }
 
 if(!stream){
-  stopCameraScanner();
-  const reason = lastErr && lastErr.name ? " (" + lastErr.name + ")" : "";
-  showMessage("Camera blocked by wrapper" + reason + ". Use Photo Backup below OR open https://veneertally-pro.netlify.app in Chrome (⋮ → Add to Home screen / Install app) / Safari (Share → Add to Home Screen).", true);
   playBeep(true);
+  triggerCameraLaunchFallback("Camera access blocked or unavailable (" + (lastErr && lastErr.message ? lastErr.message : "permission denied") + ").");
   return;
 }
 
 cameraStream = stream;
-video.srcObject = cameraStream;
+const video = document.getElementById("cameraVideo");
+video.srcObject = stream;
+document.getElementById("cameraPanel").style.display = "block";
+document.getElementById("startScanBtn").style.display = "none";
+document.getElementById("stopScanBtn").style.display = "flex";
 
 try{
   await video.play();
-}catch(e){
-  video.muted = true;
-  await video.play();
-}
+}catch(e){}
 
-const track = cameraStream.getVideoTracks()[0];
+const track = stream.getVideoTracks()[0];
 if(track){
   await applyMacroFocus(track);
-  if(track.getCapabilities && track.getCapabilities().torch){
-    document.getElementById("torchContainer").style.display = "block";
-  }
-}
-
-// Initialize Native BarcodeDetector if available
-if("BarcodeDetector" in window){
   try{
-    nativeDetector = new BarcodeDetector({
-      formats: ['code_128', 'code_39', 'code_93', 'codabar', 'ean_13', 'ean_8', 'itf', 'qr_code', 'data_matrix']
-    });
-  }catch(e){
-    try{ nativeDetector = new BarcodeDetector(); }catch(err){ nativeDetector = null; }
-  }
-}
-
-// Initialize ZXing Fallback Reader
-if(window.ZXing){
-  const hints = new Map();
-  hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-  hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
-    ZXing.BarcodeFormat.CODE_128,
-    ZXing.BarcodeFormat.CODE_39,
-    ZXing.BarcodeFormat.EAN_13,
-    ZXing.BarcodeFormat.ITF,
-    ZXing.BarcodeFormat.DATA_MATRIX,
-    ZXing.BarcodeFormat.QR_CODE
-  ]);
-  zxingReader = new ZXing.BrowserMultiFormatReader(hints);
-}
-
-runHighSpeedScanLoop();
-}
-
-/* 35ms UROVO-SPEED ROI SCAN LOOP (~28 SCANS/SEC) */
-function runHighSpeedScanLoop(){
-const video = document.getElementById("cameraVideo");
-let frameCounter = 0;
-
-const tick = async () => {
-  if(!cameraStream || scanBusy) return;
-
-  if(video.readyState >= 2 && video.videoWidth > 0){
-    frameCounter++;
-    try{
-      // 1. Direct hardware scan on raw video frame (0ms copy overhead)
-      if(nativeDetector){
-        const rawCodes = await nativeDetector.detect(video);
-        if(rawCodes && rawCodes.length && !scanBusy){
-          scanBusy = true;
-          rawCodes.sort((a, b) => (b.rawValue || "").length - (a.rawValue || "").length);
-          const sharpSnap = captureSharpROI(video, false);
-          await applyScannedBarcode(rawCodes[0].rawValue, sharpSnap);
-          stopCameraScanner();
-          return;
-        }
-      }
-
-      // 2. Every 2nd frame: Crop to center reticle + contrast sharpen for close-up/glare labels
-      if(frameCounter % 2 === 0){
-        const sharpROI = captureSharpROI(video, false);
-
-        if(nativeDetector){
-          const roiCodes = await nativeDetector.detect(sharpROI);
-          if(roiCodes && roiCodes.length && !scanBusy){
-            scanBusy = true;
-            roiCodes.sort((a, b) => (b.rawValue || "").length - (a.rawValue || "").length);
-            await applyScannedBarcode(roiCodes[0].rawValue, sharpROI);
-            stopCameraScanner();
-            return;
-          }
-        } else if(zxingReader){
-          // ZXing decode from sharpened ROI canvas
-          const luminanceSource = new ZXing.HTMLCanvasElementLuminanceSource(sharpROI);
-          const binaryBitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminanceSource));
-          const res = zxingReader.decodeBitmap(binaryBitmap);
-          if(res && !scanBusy){
-            scanBusy = true;
-            await applyScannedBarcode(res.getText(), sharpROI);
-            stopCameraScanner();
-            return;
-          }
-        }
-      }
-    }catch(e){}
-  }
-
-  if(cameraStream && !scanBusy){
-    scanTimer = setTimeout(tick, 35);
-  }
-};
-
-scanTimer = setTimeout(tick, 35);
-}
-
-async function toggleTorch(){
-if(!cameraStream) return;
-const track = cameraStream.getVideoTracks()[0];
-if(track && track.getCapabilities && track.getCapabilities().torch){
-  torchOn = !torchOn;
-  try {
-    await track.applyConstraints({ advanced: [{ torch: torchOn }] });
-  } catch(e){}
-}
-}
-
-async function manualCaptureFrame(){
-const video = document.getElementById("cameraVideo");
-if(!video || video.readyState < 2){
-  showMessage("Camera stream starting...", true);
-  return;
-}
-
-showMessage("Scanning barcode & reading printed label text...");
-try{
-  const canvas = captureSharpROI(video, false);
-
-  let foundBarcode = null;
-  if(nativeDetector){
-    try{
-      const results = await nativeDetector.detect(canvas);
-      if(results && results.length){
-        results.sort((a, b) => (b.rawValue || "").length - (a.rawValue || "").length);
-        foundBarcode = results[0].rawValue;
-      }
-    }catch(e){}
-  }
-
-  if(!foundBarcode && zxingReader){
-    try{
-      const luminanceSource = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
-      const binaryBitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminanceSource));
-      const res = zxingReader.decodeBitmap(binaryBitmap);
-      if(res) foundBarcode = res.getText();
-    }catch(e){}
-  }
-
-  if(foundBarcode){
-    await applyScannedBarcode(foundBarcode, canvas);
-    stopCameraScanner();
-    return;
-  }
-
-  const ocrText = await extractLabelTextViaOCR(canvas);
-  if(ocrText){
-    const ocrParsed = parseVeneerBarcode(ocrText);
-    if(ocrParsed.length !== null){
-      if(ocrParsed.bundle){ setValue("barcode", ocrParsed.bundle); setValue("bundleNum", ocrParsed.bundle); }
-      setValue("length", String(ocrParsed.length));
-      setValue("width", String(ocrParsed.width));
-      setValue("sheets", String(ocrParsed.sheets));
-      showMessage("Captured via Label OCR: " + ocrParsed.length + " × " + ocrParsed.width + " × " + ocrParsed.sheets + " (" + calculateArea(ocrParsed.length, ocrParsed.width, ocrParsed.sheets) + " m²)");
-      playBeep(false);
-      stopCameraScanner();
-      return;
-    }
-  }
-
-  playBeep(true);
-  showMessage("Label not clear. Tap screen to focus & tap Snap again.", true);
-}catch(err){
-  playBeep(true);
-  showMessage("Capture processing error.", true);
-}
-}
-
-function stopCameraScanner(){
-torchOn = false;
-if(scanTimer){ clearTimeout(scanTimer); scanTimer = null; }
-try{ if(zxingReader && zxingReader.reset) zxingReader.reset(); }catch(e){}
-zxingReader = null;
-nativeDetector = null;
-if(cameraStream){
-  cameraStream.getTracks().forEach(t => { try{ t.stop(); }catch(e){} });
-  cameraStream = null;
-}
-
-document.getElementById("cameraPanel").style.display = "none";
-document.getElementById("torchContainer").style.display = "none";
-document.getElementById("startScanBtn").style.display = "block";
-document.getElementById("stopScanBtn").style.display = "none";
-scanBusy = false;
-}
-
-async function handleImageScan(event){
-const file=event.target.files&&event.target.files[0];
-if(!file) return;
-showMessage("Processing label photo (Barcode + Text)...");
-let found=null;
-try{
-const img=new Image();
-const imageURL=URL.createObjectURL(file);
-await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src=imageURL; });
-
-const canvas = captureSharpROI(img, true);
-
-if("BarcodeDetector" in window){
-  try{
-    const detector=new BarcodeDetector();
-    const results=await detector.detect(canvas);
-    if(results&&results.length){
-      results.sort((a, b) => (b.rawValue || "").length - (a.rawValue || "").length);
-      found=results[0].rawValue;
+    const caps = track.getCapabilities ? track.getCapabilities() : {};
+    if(caps.torch){
+      document.getElementById("torchContainer").style.display = "block";
     }
   }catch(e){}
 }
 
-if(!found && window.ZXing){
-  const hints = new Map();
-  hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-  const reader = new ZXing.BrowserMultiFormatReader(hints);
-  try {
-    const luminanceSource = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
-    const binaryBitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminanceSource));
-    const res = reader.decodeBitmap(binaryBitmap);
-    if(res) found = res.getText();
-  } catch(e){}
-}
-
-if(found){
-  await applyScannedBarcode(found, canvas);
-} else {
-  const ocrText = await extractLabelTextViaOCR(canvas);
-  const ocrParsed = ocrText ? parseVeneerBarcode(ocrText) : { length: null };
-  if(ocrParsed.length !== null){
-    if(ocrParsed.bundle){ setValue("barcode", ocrParsed.bundle); setValue("bundleNum", ocrParsed.bundle); }
-    setValue("length", String(ocrParsed.length));
-    setValue("width", String(ocrParsed.width));
-    setValue("sheets", String(ocrParsed.sheets));
-    showMessage("Captured via Photo OCR: " + ocrParsed.length + " × " + ocrParsed.width + " × " + ocrParsed.sheets);
-    playBeep(false);
-  } else {
-    showMessage("No clear barcode or dimensions detected in photo.",true);
-    playBeep(true);
+if("BarcodeDetector" in window){
+  try{
+    nativeDetector = new BarcodeDetector({
+      formats: ["code_128", "code_39", "code_93", "ean_13", "ean_8", "upc_a", "upc_e", "itf", "codabar", "qr_code", "data_matrix", "pdf417"]
+    });
+  }catch(e){
+    nativeDetector = null;
   }
+} else {
+  nativeDetector = null;
 }
 
-URL.revokeObjectURL(imageURL);
-}catch(e){ showMessage("Failed processing photo.",true); }
-event.target.value="";
+if(window.ZXing && typeof ZXing.BrowserMultiFormatReader === "function"){
+  try{ zxingReader = new ZXing.BrowserMultiFormatReader(); }catch(e){ zxingReader = null; }
 }
 
-function saveData(){
+zeroFrameCheckTimer = setTimeout(() => {
+  if(cameraStream && (!video || video.readyState < 2 || !video.videoWidth)){
+    playBeep(true);
+    triggerCameraLaunchFallback("Camera preview did not start frames in app wrapper.");
+  }
+}, 2200);
+
+scanTimer = setInterval(scanVideoTick, 180);
+}
+
+async function handleImageScan(event){
+const file = event.target.files && event.target.files[0];
+event.target.value = "";
+if(!file) return;
+
+showMessage("Processing image for barcode & label text...");
+const reader = new FileReader();
+reader.onload = async function(e){
+  const img = new Image();
+  img.onload = async function(){
+    const roi = captureSharpROI(img, true);
+    let detected = null;
+
+    if("BarcodeDetector" in window){
+      try{
+        const det = new BarcodeDetector({
+          formats: ["code_128", "code_39", "code_93", "ean_13", "ean_8", "upc_a", "upc_e", "itf", "codabar", "qr_code", "data_matrix", "pdf417"]
+        });
+        const res = await det.detect(img);
+        if(res && res.length > 0 && res[0].rawValue) detected = res[0].rawValue;
+      }catch(err){}
+    }
+
+    if(!detected && window.ZXing && typeof ZXing.BrowserMultiFormatReader === "function"){
+      try{
+        const r = new ZXing.BrowserMultiFormatReader();
+        const out = await r.decodeFromImageElement(img).catch(() => null);
+        if(out && out.getText) detected = out.getText();
+        r.reset();
+      }catch(err){}
+    }
+
+    if(detected){
+      await applyScannedBarcode(detected, roi);
+      return;
+    }
+
+    const ocrText = await extractLabelTextViaOCR(roi);
+    if(ocrText){
+      const parsed = parseVeneerBarcode(ocrText);
+      if(parsed.length !== null){
+        if(parsed.bundle) setValue("bundleNum", parsed.bundle);
+        setValue("length", String(parsed.length));
+        setValue("width", String(parsed.width));
+        setValue("sheets", String(parsed.sheets));
+        showMessage("Photo OCR Captured: " + parsed.length + " × " + parsed.width + " × " + parsed.sheets + " (" + calculateArea(parsed.length, parsed.width, parsed.sheets) + " m²)");
+        playBeep(false);
+        return;
+      }
+    }
+
+    showMessage("Could not read barcode/dimensions from photo. Enter L/W/Sheets manually.", true);
+    playBeep(true);
+  };
+  img.src = e.target.result;
+};
+reader.readAsDataURL(file);
+}
+
+function saveToStorage(){
 try{
-localStorage.setItem(STORAGE_KEY,JSON.stringify(items));
-localStorage.setItem(SETTINGS_KEY,JSON.stringify({ pallet:getValue("palletNum"), company:getValue("companyName"), specie:getValue("veneerSpecie") }));
-document.getElementById("storageStatus").textContent="Records saved locally";
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+    palletNum: getValue("palletNum") || "Pallet 01",
+    companyName: getValue("companyName"),
+    veneerSpecie: getValue("veneerSpecie")
+  }));
 }catch(e){}
 }
 
-function loadData(){
+function loadFromStorage(){
 try{
-const savedLang = localStorage.getItem(STORAGE_KEY+"_lang");
-if(savedLang && translations[savedLang]){
-  currentLang = savedLang;
-  document.getElementById("langSelect").value = savedLang;
-}
-
-const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]");
-if(Array.isArray(saved)){
-items=saved.map(i=>({...i, area:calculateArea(Number(i.length),Number(i.width),Number(i.sheets))}));
-}
-const settings=JSON.parse(localStorage.getItem(SETTINGS_KEY)||"null");
-if(settings){
-setValue("palletNum",settings.pallet||"Pallet 01");
-setValue("companyName",settings.company||"");
-setValue("veneerSpecie",settings.specie||"");
-}
-}catch(e){ items=[]; }
-}
-
-function addBundle(){
-const pallet=getValue("palletNum")||"Pallet 01";
-const company=getValue("companyName")||"-";
-const specie=getValue("veneerSpecie")||"-";
-const code=getValue("barcode");
-const bundle=getValue("bundleNum")||"-";
-const len=Number(document.getElementById("length").value);
-const wid=Number(document.getElementById("width").value);
-const sheets=Number(document.getElementById("sheets").value);
-
-if(!code){ showMessage("Enter or scan a barcode.",true); return; }
-if(!Number.isFinite(len)||len<=0||!Number.isFinite(wid)||wid<=0||!Number.isInteger(sheets)||sheets<=0){
-showMessage("Enter valid dimensions.",true); return;
-}
-
-const item={ pallet, company, specie, barcode:code, bundle, length:len, width:wid, sheets, area:calculateArea(len,wid,sheets) };
-if(editingBarcode!==null) items=items.filter(i=>i.barcode!==editingBarcode);
-items.unshift(item);
-editingBarcode=null;
-resetSaveButton();
-clearBundleInputs();
-saveData();
-renderTable();
-updateTotals();
-playBeep(false);
-showMessage("Saved "+code+" ("+item.area.toFixed(2)+" m²)");
-document.getElementById("barcode").focus();
-}
-
-function clearBundleInputs(){
-setValue("barcode",""); setValue("bundleNum",""); setValue("length",""); setValue("width",""); setValue("sheets","1");
-}
-
-function resetSaveButton(){
-const button=document.getElementById("saveBtn");
-const t = translations[currentLang];
-button.innerHTML = '➕ <span id="lblAddBundle">' + t.addBundle + '</span>';
-button.style.background="#238b57";
-}
-
-function editItem(code){
-const item=items.find(i=>i.barcode===code);
-if(!item) return;
-setValue("palletNum",item.pallet);
-setValue("companyName",item.company);
-setValue("veneerSpecie",item.specie);
-setValue("barcode",item.barcode);
-setValue("bundleNum",item.bundle);
-setValue("length",item.length);
-setValue("width",item.width);
-setValue("sheets",item.sheets);
-editingBarcode=code;
-const t = translations[currentLang];
-document.getElementById("saveBtn").innerHTML = '💾 <span id="lblUpdateBundle">' + t.updateBundle.replace('💾 ','') + '</span>';
-document.getElementById("saveBtn").style.background="#c97816";
-}
-
-function deleteItem(code){
-if(!confirm("Delete barcode "+code+"?")) return;
-items=items.filter(i=>i.barcode!==code);
-saveData(); renderTable(); updateTotals();
-}
-
-function deleteLast(){
-if(!items.length) return;
-items.shift();
-saveData(); renderTable(); updateTotals();
-}
-
-function renderTable(){
-const body=document.getElementById("tallyBody");
-const query=getValue("searchFilter").toLowerCase();
-body.replaceChildren();
-const filtered=items.filter(i=>[i.pallet,i.company,i.specie,i.barcode,i.bundle].join(" ").toLowerCase().includes(query));
-
-const t = translations[currentLang];
-filtered.forEach(item=>{
-const row=document.createElement("tr");
-[item.pallet, item.specie, item.barcode, item.length+"×"+item.width+"×"+item.sheets, item.area.toFixed(2)].forEach((val)=>{
-const cell=document.createElement("td");
-cell.textContent=val;
-row.appendChild(cell);
-});
-const actions=document.createElement("td");
-const edit=document.createElement("button");
-edit.className="btn-action btn-row-edit"; edit.textContent=t.editBtn; edit.onclick=()=>editItem(item.barcode);
-const del=document.createElement("button");
-del.className="btn-action btn-row-del"; del.textContent=t.delBtn; del.onclick=()=>deleteItem(item.barcode);
-actions.append(edit,del);
-row.appendChild(actions);
-body.appendChild(row);
-});
+  const savedLang = localStorage.getItem(STORAGE_KEY+"_lang");
+  if(savedLang && translations[savedLang]){
+    currentLang = savedLang;
+    document.getElementById("langSelect").value = savedLang;
+  }
+  const rawItems = localStorage.getItem(STORAGE_KEY);
+  if(rawItems){
+    const parsed = JSON.parse(rawItems);
+    if(Array.isArray(parsed)) items = parsed;
+  }
+  const rawSettings = localStorage.getItem(SETTINGS_KEY);
+  if(rawSettings){
+    const s = JSON.parse(rawSettings);
+    if(s.palletNum) setValue("palletNum", s.palletNum);
+    if(s.companyName) setValue("companyName", s.companyName);
+    if(s.veneerSpecie) setValue("veneerSpecie", s.veneerSpecie);
+  }
+}catch(e){}
 }
 
 function updateTotals(){
-const total=items.reduce((sum,i)=>sum+i.area,0);
-const t = translations[currentLang];
-document.getElementById("palletDisplay").textContent=t.palletDisplay+(getValue("palletNum")||"Pallet 01");
-document.getElementById("totalM2").textContent=total.toFixed(2)+" m²";
-document.getElementById("totalBundles").textContent=t.totalBundles+items.length;
-document.getElementById("tableGrandTotal").textContent=total.toFixed(2)+" m²";
+const t = translations[currentLang] || translations.en;
+const pallet = getValue("palletNum") || "Pallet 01";
+document.getElementById("palletDisplay").textContent = t.palletDisplay + pallet;
+document.getElementById("totalBundles").textContent = t.totalBundles + items.length;
+
+let grandTotal = 0;
+for(const it of items){
+  grandTotal = roundArea(grandTotal + (Number(it.area) || 0));
+}
+document.getElementById("totalM2").textContent = grandTotal.toFixed(2) + " m²";
+document.getElementById("tableGrandTotal").textContent = grandTotal.toFixed(2) + " m²";
+}
+
+function escapeHtml(str){
+return String(str || "")
+  .replace(/&/g, "&amp;")
+  .replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;");
+}
+
+function renderTable(){
+const t = translations[currentLang] || translations.en;
+const query = (document.getElementById("searchFilter").value || "").toLowerCase().trim();
+const tbody = document.getElementById("tallyBody");
+tbody.innerHTML = "";
+
+for(const it of items){
+  const hay = [it.pallet, it.species, it.company, it.barcode, it.bundleNum].join(" ").toLowerCase();
+  if(query && !hay.includes(query)) continue;
+
+  const tr = document.createElement("tr");
+  tr.innerHTML =
+    "<td>" + escapeHtml(it.pallet) + "</td>" +
+    "<td>" + escapeHtml(it.species) + (it.company ? "<br><small>" + escapeHtml(it.company) + "</small>" : "") + "</td>" +
+    "<td>" + escapeHtml(it.barcode) + (it.bundleNum ? "<br><small>#" + escapeHtml(it.bundleNum) + "</small>" : "") + "</td>" +
+    "<td>" + escapeHtml(it.length) + " × " + escapeHtml(it.width) + " × " + escapeHtml(it.sheets) + "</td>" +
+    "<td><strong>" + Number(it.area).toFixed(2) + "</strong></td>" +
+    "<td class=\"no-print\">" +
+      "<button class=\"btn-row-edit btn-action\" onclick=\"editItem('" + encodeURIComponent(it.barcode) + "')\">" + escapeHtml(t.editBtn) + "</button> " +
+      "<button class=\"btn-row-del btn-action\" onclick=\"deleteItem('" + encodeURIComponent(it.barcode) + "')\">" + escapeHtml(t.delBtn) + "</button>" +
+    "</td>";
+  tbody.appendChild(tr);
+}
+}
+
+function clearBundleInputs(){
+setValue("barcode", "");
+setValue("bundleNum", "");
+setValue("length", "");
+setValue("width", "");
+setValue("sheets", "1");
+editingBarcode = null;
+const t = translations[currentLang] || translations.en;
+document.getElementById("saveBtn").innerHTML = '➕ <span id="lblAddBundle">' + t.addBundle + '</span>';
+}
+
+function addBundle(){
+const pallet = getValue("palletNum") || "Pallet 01";
+const company = getValue("companyName");
+const species = getValue("veneerSpecie");
+const barcode = getValue("barcode") || ("MANUAL-" + Date.now());
+const bundleNum = getValue("bundleNum");
+const length = Number(getValue("length"));
+const width = Number(getValue("width"));
+const sheets = parseInt(getValue("sheets"), 10) || 1;
+
+if(!Number.isFinite(length) || length <= 0 || !Number.isFinite(width) || width <= 0 || sheets <= 0){
+  playBeep(true);
+  showMessage("Please enter valid positive Length, Width, and Sheets.", true);
+  return;
+}
+
+const area = calculateArea(length, width, sheets);
+const record = { pallet, company, species, barcode, bundleNum, length, width, sheets, area };
+
+if(editingBarcode !== null){
+  const idx = items.findIndex(i => i.barcode === editingBarcode);
+  if(idx !== -1){
+    items[idx] = record;
+  } else {
+    items.unshift(record);
+  }
+  showMessage("Updated bundle (" + area.toFixed(2) + " m²).");
+} else {
+  items.unshift(record);
+  showMessage("Added bundle (" + area.toFixed(2) + " m²).");
+}
+
+saveToStorage();
+updateTotals();
+renderTable();
+clearBundleInputs();
+playBeep(false);
+document.getElementById("barcode").focus();
+}
+
+function editItem(encodedBarcode){
+const code = decodeURIComponent(encodedBarcode);
+const found = items.find(i => i.barcode === code);
+if(!found) return;
+
+setValue("palletNum", found.pallet || "Pallet 01");
+setValue("companyName", found.company || "");
+setValue("veneerSpecie", found.species || "");
+setValue("barcode", found.barcode || "");
+setValue("bundleNum", found.bundleNum || "");
+setValue("length", found.length || "");
+setValue("width", found.width || "");
+setValue("sheets", found.sheets || 1);
+
+editingBarcode = found.barcode;
+const t = translations[currentLang] || translations.en;
+document.getElementById("saveBtn").innerHTML = '💾 <span id="lblUpdateBundle">' + t.updateBundle.replace('💾 ','') + '</span>';
+showMessage("Editing barcode: " + found.barcode);
+}
+
+function deleteItem(encodedBarcode){
+const code = decodeURIComponent(encodedBarcode);
+items = items.filter(i => i.barcode !== code);
+if(editingBarcode === code) clearBundleInputs();
+saveToStorage();
+updateTotals();
+renderTable();
+showMessage("Deleted record.");
+}
+
+function deleteLast(){
+if(items.length === 0){
+  showMessage("No records to delete.", true);
+  return;
+}
+items.shift();
+saveToStorage();
+updateTotals();
+renderTable();
+showMessage("Deleted latest bundle.");
 }
 
 function newPallet(){
-const current=getValue("palletNum")||"Pallet 01";
-const match=current.match(/(\d+)\s*$/);
-const next=match?Number(match[1])+1:2;
-setValue("palletNum","Pallet "+String(next).padStart(2,"0"));
-updateTotals(); saveData();
+const current = getValue("palletNum") || "Pallet 01";
+const match = current.match(/(\d+)$/);
+let nextName = "Pallet 02";
+if(match){
+  const numStr = match[1];
+  const nextNum = String(parseInt(numStr, 10) + 1).padStart(numStr.length, "0");
+  nextName = current.slice(0, current.length - numStr.length) + nextNum;
+}
+setValue("palletNum", nextName);
+saveToStorage();
+updateTotals();
+showMessage("Switched to " + nextName);
 }
 
 function clearAll(){
-if(!confirm("Clear all records?")) return;
-items=[]; saveData(); renderTable(); updateTotals();
+if(items.length === 0) return;
+if(!confirm("Clear all tally records?")) return;
+items = [];
+clearBundleInputs();
+saveToStorage();
+updateTotals();
+renderTable();
+showMessage("Cleared all records.");
 }
 
-function getCSVString(){
-const headings=["Pallet Number","Company/Supplier","Veneer Species","Barcode","Bundle No","Length (cm)","Width (cm)","Sheets","Area (m2)"];
-let csvRows=[headings.join(",")];
-items.forEach(item=>{
-csvRows.push([`"${item.pallet}"`,`"${item.company}"`,`"${item.specie}"`,`"${item.barcode}"`,`"${item.bundle}"`,item.length,item.width,item.sheets,item.area.toFixed(2)].join(","));
+function buildCSVContent(){
+const rows = [["Pallet", "Species", "Supplier", "Barcode", "Bundle No.", "Length (cm)", "Width (cm)", "Sheets", "Area (m²)"]];
+for(const it of items){
+  rows.push([
+    it.pallet || "",
+    it.species || "",
+    it.company || "",
+    it.barcode || "",
+    it.bundleNum || "",
+    it.length ?? "",
+    it.width ?? "",
+    it.sheets ?? "",
+    Number(it.area || 0).toFixed(2)
+  ]);
+}
+return rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(",")).join("\n");
+}
+
+function buildSummaryText(){
+let totalArea = 0;
+for(const it of items) totalArea = roundArea(totalArea + (Number(it.area) || 0));
+const lines = [
+  "VeneerTally Pro Report",
+  "Pallet: " + (getValue("palletNum") || "Pallet 01"),
+  "Supplier: " + (getValue("companyName") || "-"),
+  "Species: " + (getValue("veneerSpecie") || "-"),
+  "Total Bundles: " + items.length,
+  "Grand Total: " + totalArea.toFixed(2) + " m²",
+  "---"
+];
+items.forEach((it, idx) => {
+  lines.push((idx + 1) + ". [" + it.pallet + "] " + it.barcode + (it.bundleNum ? " #" + it.bundleNum : "") + " - " + it.length + "x" + it.width + "x" + it.sheets + " = " + Number(it.area).toFixed(2) + " m²");
 });
-const total=items.reduce((sum,i)=>sum+i.area,0);
-csvRows.push(`"GRAND TOTAL","","","","","","","",${total.toFixed(2)}`);
-return csvRows.join("\n");
+return lines.join("\n");
 }
 
 function exportExcel(){
-if(!items.length){ alert("No items to export."); return; }
-const t = translations[currentLang];
-document.getElementById("modalTitle").textContent = t.modalTitle;
-document.getElementById("csvPreview").value = getCSVString();
-document.getElementById("exportModal").style.display="block";
+document.getElementById("modalTitle").textContent = (translations[currentLang] || translations.en).exportData;
+document.getElementById("csvPreview").value = buildCSVContent();
+document.getElementById("exportModal").style.display = "block";
 }
 
 function exportPDF(){
-if(!items.length){ alert("No items to export."); return; }
-let summary = "=== VENEERTALLY PRO REPORT ===\n";
-summary += "Date: " + new Date().toISOString().slice(0,10) + "\n";
-summary += "Pallet: " + (getValue("palletNum") || "Pallet 01") + "\n";
-summary += "Supplier: " + (getValue("companyName") || "-") + "\n";
-summary += "Species: " + (getValue("veneerSpecie") || "-") + "\n";
-summary += "----------------------------------------\n\n";
-items.forEach((i, idx)=>{
-summary += `#${idx+1} | Pallet: ${i.pallet} | Barcode: ${i.barcode} | ${i.length}x${i.width}cm (${i.sheets} sht) -> ${i.area.toFixed(2)} m²\n`;
-});
-const total = items.reduce((sum,i)=>sum+i.area,0);
-summary += "\n----------------------------------------\n";
-summary += `GRAND TOTAL: ${total.toFixed(2)} m² (${items.length} Bundles)\n`;
-
-const t = translations[currentLang];
-document.getElementById("modalTitle").textContent = t.modalTitle;
-document.getElementById("csvPreview").value = summary;
-document.getElementById("exportModal").style.display="block";
+document.getElementById("modalTitle").textContent = (translations[currentLang] || translations.en).reportSummary;
+document.getElementById("csvPreview").value = buildSummaryText();
+document.getElementById("exportModal").style.display = "block";
 }
 
-async function copyCSVToClipboard(){
-if(!items.length){ alert("No items to copy."); return; }
-const textData = document.getElementById("csvPreview").value;
-try{
-await navigator.clipboard.writeText(textData);
-alert("Data copied to clipboard!");
-document.getElementById("exportModal").style.display="none";
-}catch(e){
-const textarea = document.getElementById("csvPreview");
-textarea.select();
-document.execCommand("copy");
-alert("Data copied to clipboard!");
-document.getElementById("exportModal").style.display="none";
+function copyCSVToClipboard(){
+const ta = document.getElementById("csvPreview");
+ta.select();
+ta.setSelectionRange(0, ta.value.length);
+if(navigator.clipboard && navigator.clipboard.writeText){
+  navigator.clipboard.writeText(ta.value).then(() => showMessage("Copied to clipboard!")).catch(() => {
+    document.execCommand("copy");
+    showMessage("Copied to clipboard!");
+  });
+} else {
+  document.execCommand("copy");
+  showMessage("Copied to clipboard!");
 }
 }
 
 async function shareReportText(){
-if(!items.length){ alert("No items to share."); return; }
-const textData = document.getElementById("csvPreview").value;
+const text = document.getElementById("csvPreview").value || buildSummaryText();
 if(navigator.share){
-try{
-await navigator.share({
-title: 'VeneerTally Report',
-text: textData
-});
-document.getElementById("exportModal").style.display="none";
-return;
-}catch(e){}
+  try{
+    await navigator.share({ title: "VeneerTally Pro Report", text });
+    showMessage("Shared report.");
+    return;
+  }catch(e){}
 }
 copyCSVToClipboard();
+showMessage("Report copied—paste into WhatsApp, Email, or Drive.");
 }
 
-loadData(); 
+loadFromStorage();
 changeLanguage(currentLang);
-renderTable(); 
 updateTotals();
+renderTable();
 </script>
 </body>
 </html>
