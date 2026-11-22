@@ -296,19 +296,25 @@ oninput="renderTable()" style="background:#293c44;color:white;border-color:#5366
 Opening https://veneertally-pro.netlify.app in their mobile browser (such as Chrome on Android or Safari on iPhone) and saving it to their Home Screen (Add to Home screen / Install app) for browser-based camera access.
 </p>
 
-<a id="netlifyDirectLink" href="https://veneertally-pro.netlify.app" target="_blank" rel="noopener noreferrer" onclick="openNetlifyForInstall(event)" style="display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:13px 10px;background:#218c52;color:white;text-decoration:none;font-weight:bold;font-size:14px;border-radius:6px;margin-top:8px">
-🌐 Open https://veneertally-pro.netlify.app Now
-</a>
+<div style="background:#17232a;border:1px solid #53666e;border-radius:6px;padding:8px;margin:8px 0;font-size:12px;color:#81c784;word-break:break-all">
+  https://veneertally-pro.netlify.app
+</div>
 
-<button id="installPwaBtn" class="btn-scan" style="margin-top:8px" onclick="triggerPwaInstall()">
+<button type="button" class="btn-add" style="margin-top:6px;background:#218c52" onclick="openNetlifyForInstall(event)">
+🌐 Open https://veneertally-pro.netlify.app Now
+</button>
+
+<button type="button" id="installPwaBtn" class="btn-scan" style="margin-top:8px" onclick="triggerPwaInstall()">
 📲 Install App / Add to Home Screen
 </button>
 
-<button class="btn-add" style="margin-top:8px;background:#154360" onclick="closeCameraFallbackModal();document.getElementById('cameraInput').click()">
+<div id="fallbackActionStatus" style="font-size:11px;color:#ffcf70;margin-top:8px;line-height:1.4"></div>
+
+<button type="button" class="btn-add" style="margin-top:8px;background:#154360" onclick="closeCameraFallbackModal();document.getElementById('cameraInput').click()">
 📸 Use Photo Backup Scan Instead
 </button>
 
-<button class="btn-del" style="margin-top:10px" onclick="closeCameraFallbackModal()">
+<button type="button" class="btn-del" style="margin-top:10px" onclick="closeCameraFallbackModal()">
 ✕ Continue / Close
 </button>
 </div>
@@ -358,11 +364,27 @@ window.addEventListener("beforeinstallprompt", function(e){
   deferredInstallPrompt = e;
 });
 
+function copyFallbackUrlQuietly(){
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(PWA_FALLBACK_URL).catch(function(){});
+    }
+  }catch(e){}
+}
+
+function setFallbackActionNote(msg){
+  const el = document.getElementById("fallbackActionStatus");
+  if(el) el.textContent = msg;
+  showMessage(msg, true);
+}
+
 function openCameraFallbackModal(reasonText){
   const textEl = document.getElementById("fallbackModalText");
   if(textEl){
     textEl.textContent = reasonText ? (reasonText + " " + CAMERA_LAUNCH_FALLBACK_MSG) : CAMERA_LAUNCH_FALLBACK_MSG;
   }
+  const statusEl = document.getElementById("fallbackActionStatus");
+  if(statusEl) statusEl.textContent = "";
   showMessage(CAMERA_LAUNCH_FALLBACK_MSG, true);
   const modal = document.getElementById("cameraFallbackModal");
   if(modal) modal.style.display = "block";
@@ -374,14 +396,19 @@ function closeCameraFallbackModal(){
 }
 
 function openNetlifyForInstall(event){
-  if(event) event.preventDefault();
+  if(event && event.preventDefault) event.preventDefault();
+  copyFallbackUrlQuietly();
+  setFallbackActionNote("If your app stays here, open Chrome/Safari and go to https://veneertally-pro.netlify.app (link copied), then tap Menu/Share -> Add to Home screen / Install app.");
   try{
-    const win = window.open(PWA_FALLBACK_URL, "_blank", "noopener,noreferrer");
-    if(!win){
-      window.location.href = PWA_FALLBACK_URL;
+    if(window.top && window.top !== window){
+      window.top.location.href = PWA_FALLBACK_URL;
+      return;
     }
+  }catch(e){}
+  try{
+    window.location.assign(PWA_FALLBACK_URL);
   }catch(e){
-    window.location.href = PWA_FALLBACK_URL;
+    try{ window.location.href = PWA_FALLBACK_URL; }catch(e2){}
   }
 }
 
@@ -389,12 +416,16 @@ async function triggerPwaInstall(){
   if(deferredInstallPrompt){
     try{
       deferredInstallPrompt.prompt();
-      await deferredInstallPrompt.userChoice;
+      const choice = await deferredInstallPrompt.userChoice;
       deferredInstallPrompt = null;
-      return;
+      if(choice && choice.outcome === "accepted"){
+        setFallbackActionNote("App installed to Home Screen.");
+        return;
+      }
     }catch(e){}
   }
-  openNetlifyForInstall();
+  copyFallbackUrlQuietly();
+  setFallbackActionNote("Installed apps cannot trigger Home Screen install directly. Open https://veneertally-pro.netlify.app in Chrome (Android) or Safari (iPhone) and choose Add to Home screen / Install app.");
 }
 
 const translations = {
