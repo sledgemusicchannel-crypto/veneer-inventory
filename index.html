@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -879,7 +878,7 @@ const guide=document.getElementById("scanGuideFrame");
 if(guide) guide.classList.remove("locked");
 
 if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-  showMessage("Camera API requires HTTPS or localhost. Use 'Take Photo to Scan'.", true);
+  showMessage("Camera API requires browser mode. Open https://veneertally-pro.netlify.app in Chrome (⋮ → Add to Home screen / Install app) or Safari (Share → Add to Home Screen).", true);
   playBeep(true);
   return;
 }
@@ -926,7 +925,7 @@ for(const constraints of constraintSets){
 if(!stream){
   stopCameraScanner();
   const reason = lastErr && lastErr.name ? " (" + lastErr.name + ")" : "";
-  showMessage("Camera blocked or unavailable" + reason + ". Allow camera permission or use Photo Backup.", true);
+  showMessage("Camera blocked by wrapper" + reason + ". Use Photo Backup below OR open https://veneertally-pro.netlify.app in Chrome (⋮ → Add to Home screen / Install app) / Safari (Share → Add to Home Screen).", true);
   playBeep(true);
   return;
 }
