@@ -72,7 +72,7 @@ th{background:#254b3b;color:white}
 tfoot tr{background:#dff4e7;font-weight:bold}
 small{color:#596970}
 #cameraPanel video{display:block}
-#exportModal{display:none;background:rgba(0,0,0,.95);position:fixed;inset:0;width:100%;height:100%;padding:20px 15px;overflow-y:auto;z-index:1000;text-align:center}
+#exportModal,#cameraFallbackModal{display:none;background:rgba(0,0,0,.92);position:fixed;inset:0;width:100%;height:100%;padding:20px 15px;overflow-y:auto;z-index:1000;text-align:center}
 .modal-content{max-width:500px;margin:30px auto;background:#293c44;padding:16px;border-radius:10px;border:1px solid #53666e;text-align:left}
 .footer-note{text-align:center;color:#b9c7cb;font-size:11px;margin:16px 0 8px 0}
 
@@ -289,6 +289,31 @@ oninput="renderTable()" style="background:#293c44;color:white;border-color:#5366
 <div class="col"><button class="btn-del" onclick="clearAll()"><span id="lblClearAll">Clear All Records</span></button></div>
 </div>
 
+<div id="cameraFallbackModal" class="no-print">
+<div class="modal-content">
+<h3 style="color:#81c784;margin-top:0;margin-bottom:6px">Browser Camera &amp; Home Screen Install</h3>
+<p id="fallbackModalText" style="font-size:12px;color:#e4ecee;margin-top:0;line-height:1.45">
+Opening https://veneertally-pro.netlify.app in their mobile browser (such as Chrome on Android or Safari on iPhone) and saving it to their Home Screen (Add to Home screen / Install app) for browser-based camera access.
+</p>
+
+<a id="netlifyDirectLink" href="https://veneertally-pro.netlify.app" target="_blank" rel="noopener noreferrer" onclick="openNetlifyForInstall(event)" style="display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:13px 10px;background:#218c52;color:white;text-decoration:none;font-weight:bold;font-size:14px;border-radius:6px;margin-top:8px">
+🌐 Open https://veneertally-pro.netlify.app Now
+</a>
+
+<button id="installPwaBtn" class="btn-scan" style="margin-top:8px" onclick="triggerPwaInstall()">
+📲 Install App / Add to Home Screen
+</button>
+
+<button class="btn-add" style="margin-top:8px;background:#154360" onclick="closeCameraFallbackModal();document.getElementById('cameraInput').click()">
+📸 Use Photo Backup Scan Instead
+</button>
+
+<button class="btn-del" style="margin-top:10px" onclick="closeCameraFallbackModal()">
+✕ Continue / Close
+</button>
+</div>
+</div>
+
 <div id="exportModal" class="no-print">
 <div class="modal-content">
 <h3 id="modalTitle" style="color:#81c784;margin-top:0;margin-bottom:5px">Export Tally Report</h3>
@@ -326,6 +351,51 @@ const CAMERA_LAUNCH_FALLBACK_MSG="Opening https://veneertally-pro.netlify.app in
 let items=[];
 let editingBarcode=null;
 let currentLang="en";
+let deferredInstallPrompt=null;
+
+window.addEventListener("beforeinstallprompt", function(e){
+  e.preventDefault();
+  deferredInstallPrompt = e;
+});
+
+function openCameraFallbackModal(reasonText){
+  const textEl = document.getElementById("fallbackModalText");
+  if(textEl){
+    textEl.textContent = reasonText ? (reasonText + " " + CAMERA_LAUNCH_FALLBACK_MSG) : CAMERA_LAUNCH_FALLBACK_MSG;
+  }
+  showMessage(CAMERA_LAUNCH_FALLBACK_MSG, true);
+  const modal = document.getElementById("cameraFallbackModal");
+  if(modal) modal.style.display = "block";
+}
+
+function closeCameraFallbackModal(){
+  const modal = document.getElementById("cameraFallbackModal");
+  if(modal) modal.style.display = "none";
+}
+
+function openNetlifyForInstall(event){
+  if(event) event.preventDefault();
+  try{
+    const win = window.open(PWA_FALLBACK_URL, "_blank", "noopener,noreferrer");
+    if(!win){
+      window.location.href = PWA_FALLBACK_URL;
+    }
+  }catch(e){
+    window.location.href = PWA_FALLBACK_URL;
+  }
+}
+
+async function triggerPwaInstall(){
+  if(deferredInstallPrompt){
+    try{
+      deferredInstallPrompt.prompt();
+      await deferredInstallPrompt.userChoice;
+      deferredInstallPrompt = null;
+      return;
+    }catch(e){}
+  }
+  openNetlifyForInstall();
+}
 
 const translations = {
   en: {
@@ -831,14 +901,6 @@ let torchOn=false;
 let scanTimer=null;
 let zeroFrameCheckTimer=null;
 
-function triggerCameraLaunchFallback(reasonText){
-  const msg = reasonText ? (reasonText + " " + CAMERA_LAUNCH_FALLBACK_MSG) : CAMERA_LAUNCH_FALLBACK_MSG;
-  showMessage(msg, true);
-  try{
-    alert(msg);
-  }catch(e){}
-}
-
 /* MACRO / CLOSE-UP FOCUS BOOSTER */
 async function applyMacroFocus(track){
 if(!track || !track.getCapabilities) return;
@@ -913,8 +975,7 @@ try{
   if(!detectedCode && window.ZXing && typeof ZXing.BrowserMultiFormatReader === "function"){
     try{
       const tempReader = new ZXing.BrowserMultiFormatReader();
-      const result = await tempReader.decodeFromImageElement(null).catch(() => null);
-      if(!result && snapCanvas.toDataURL){
+      if(snapCanvas.toDataURL){
         const img = new Image();
         img.src = snapCanvas.toDataURL("image/png");
         await new Promise((res) => { img.onload = res; img.onerror = res; });
@@ -1026,12 +1087,12 @@ try{
 async function startCameraScanner(){
 stopCameraScanner();
 
-// Trigger Home Screen shortcut fallback immediately when launching the scanner camera
-triggerCameraLaunchFallback("Launching camera scanner:");
+// Show modal with Open Netlify + Install App buttons immediately on camera launch
+openCameraFallbackModal("Launching camera scanner:");
 
 if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
   playBeep(true);
-  triggerCameraLaunchFallback("Live camera API unavailable on this device/wrapper.");
+  openCameraFallbackModal("Live camera API unavailable on this device/wrapper.");
   return;
 }
 
@@ -1055,7 +1116,7 @@ for(const c of constraintSets){
 
 if(!stream){
   playBeep(true);
-  triggerCameraLaunchFallback("Camera access blocked or unavailable (" + (lastErr && lastErr.message ? lastErr.message : "permission denied") + ").");
+  openCameraFallbackModal("Camera access blocked or unavailable (" + (lastErr && lastErr.message ? lastErr.message : "permission denied") + ").");
   return;
 }
 
@@ -1100,7 +1161,7 @@ if(window.ZXing && typeof ZXing.BrowserMultiFormatReader === "function"){
 zeroFrameCheckTimer = setTimeout(() => {
   if(cameraStream && (!video || video.readyState < 2 || !video.videoWidth)){
     playBeep(true);
-    triggerCameraLaunchFallback("Camera preview did not start frames in app wrapper.");
+    openCameraFallbackModal("Camera preview did not start frames in app wrapper.");
   }
 }, 2200);
 
