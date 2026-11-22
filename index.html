@@ -866,20 +866,28 @@ try{
 }catch(e){}
 }
 
-function getUserMediaWithTimeout(constraints, timeoutMs = 7000){
+function formatMediaError(err){
+if(!err) return "UnknownWebViewError";
+const parts = [];
+if(err.name) parts.push(err.name);
+if(err.message) parts.push(err.message);
+return parts.length ? parts.join(": ") : String(err);
+}
+
+function getUserMediaWithTimeout(constraints, timeoutMs = 5500){
 return new Promise((resolve, reject) => {
   let done = false;
   const timer = setTimeout(() => {
     if(done) return;
     done = true;
-    reject(new Error("getUserMedia timed out in WebView (App/WebView camera permission not granted or blocked)"));
+    reject(new Error("WebViewGetUserMediaTimeout"));
   }, timeoutMs);
 
   const callMedia = (navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
     ? navigator.mediaDevices.getUserMedia(constraints)
     : new Promise((res, rej) => {
         const legacy = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
-        if(!legacy) return rej(new Error("mediaDevices.getUserMedia unavailable"));
+        if(!legacy) return rej(new Error("NoGetUserMediaAPI"));
         legacy.call(navigator, constraints, res, rej);
       });
 
@@ -897,7 +905,7 @@ return new Promise((resolve, reject) => {
       if(done) return;
       done = true;
       clearTimeout(timer);
-      reject(err);
+      reject(err || new Error("EmptyGetUserMediaRejection"));
     }
   );
 });
@@ -916,11 +924,12 @@ let stream = null;
 
 for(const constraints of attempts){
   try{
-    stream = await getUserMediaWithTimeout(constraints, 6500);
+    stream = await getUserMediaWithTimeout(constraints, 5500);
     if(stream) break;
   }catch(err){
     lastErr = err;
-    if(err && (err.name === "NotAllowedError" || err.name === "PermissionDeniedError" || err.name === "SecurityError")){
+    const msg = formatMediaError(err);
+    if(/NotAllowedError|PermissionDeniedError|SecurityError|WebViewGetUserMediaTimeout/i.test(msg)){
       break;
     }
   }
@@ -936,7 +945,7 @@ try{
     const rear = devices.find(d => d.kind === "videoinput" && /back|rear|environment/i.test(d.label));
     if(rear && rear.deviceId){
       stream.getTracks().forEach(t => t.stop());
-      stream = await getUserMediaWithTimeout({ audio: false, video: { deviceId: { exact: rear.deviceId } } }, 6500);
+      stream = await getUserMediaWithTimeout({ audio: false, video: { deviceId: { exact: rear.deviceId } } }, 5500);
     }
   }
 }catch(e){}
@@ -976,7 +985,7 @@ return new Promise((resolve, reject) => {
       finishPlay();
     } else {
       settled = true;
-      reject(new Error("Video stream attached but WebView player did not start"));
+      reject(new Error("WebViewVideoPlayerStalled"));
     }
   }, 4500);
 
@@ -1005,8 +1014,8 @@ try{
   stream = await getBestRearCameraStream();
 }catch(err){
   stopCameraScanner();
-  const detail = (err && (err.name || err.message)) ? " (" + (err.name || err.message) + ")" : "";
-  showMessage("App WebView blocked camera" + detail + ". Allow Camera in App Settings or use Photo Backup.", true);
+  const detail = formatMediaError(err);
+  showMessage("App WebView blocked camera (" + detail + "). Check wrapper WebChromeClient permission or use Photo Backup.", true);
   playBeep(true);
   return;
 }
@@ -1019,7 +1028,7 @@ try{
   showMessage("Camera active. Align barcode with red line.");
 }catch(e){
   stopCameraScanner();
-  showMessage("App video player blocked stream (" + (e.message || "PlaybackError") + "). Use Photo Backup.", true);
+  showMessage("App video player blocked stream (" + formatMediaError(e) + "). Use Photo Backup.", true);
   playBeep(true);
   return;
 }
@@ -1034,7 +1043,6 @@ if(track){
   }catch(e){}
 }
 
-// Initialize Native BarcodeDetector if available
 if("BarcodeDetector" in window){
   try{
     nativeDetector = new BarcodeDetector({
@@ -1045,7 +1053,6 @@ if("BarcodeDetector" in window){
   }
 }
 
-// Initialize ZXing Fallback Reader
 if(window.ZXing){
   try{
     const hints = new Map();
