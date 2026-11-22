@@ -913,7 +913,9 @@ if(parsed.length !== null){
   showMessage("Barcode ID: " + code + ". Tap 'Instant Snap' with full label in box or enter L/W/Sheets.", true);
   playBeep(false);
 }
-document.getElementById("length").focus();
+if(!cameraStream){
+  document.getElementById("length").focus();
+}
 }
 
 /* HARDWARE SCANNER LISTENER (UROVO / TITAN 2) */
@@ -931,6 +933,8 @@ let scanBusy=false;
 let torchOn=false;
 let scanTimer=null;
 let zeroFrameCheckTimer=null;
+let lastScannedCode="";
+let scanCooldownUntil=0;
 
 /* MACRO / CLOSE-UP FOCUS BOOSTER */
 async function applyMacroFocus(track){
@@ -1018,7 +1022,12 @@ try{
   }
 
   if(detectedCode){
+    scanCooldownUntil = Date.now() + 1800;
     await applyScannedBarcode(detectedCode, snapCanvas);
+    setTimeout(() => {
+      const guide = document.getElementById("scanGuideFrame");
+      if(guide) guide.classList.remove("locked");
+    }, 1500);
   } else {
     showMessage("Running OCR on label text...");
     const ocrText = await extractLabelTextViaOCR(snapCanvas);
@@ -1031,7 +1040,9 @@ try{
         setValue("sheets", String(parsed.sheets));
         showMessage("OCR Captured: " + parsed.length + " × " + parsed.width + " × " + parsed.sheets + " (" + calculateArea(parsed.length, parsed.width, parsed.sheets) + " m²)");
         playBeep(false);
-        document.getElementById("length").focus();
+        if(!cameraStream){
+          document.getElementById("length").focus();
+        }
         return;
       }
     }
@@ -1054,6 +1065,8 @@ if(zeroFrameCheckTimer){
 }
 scanBusy = false;
 torchOn = false;
+lastScannedCode = "";
+scanCooldownUntil = 0;
 if(zxingReader){
   try{ zxingReader.reset(); }catch(e){}
   zxingReader = null;
@@ -1078,6 +1091,7 @@ document.getElementById("stopScanBtn").style.display = "none";
 
 async function scanVideoTick(){
 if(scanBusy || !cameraStream) return;
+if(Date.now() < scanCooldownUntil) return;
 const video = document.getElementById("cameraVideo");
 if(!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) return;
 scanBusy = true;
@@ -1105,8 +1119,13 @@ try{
   }
 
   if(code){
-    stopCameraScanner();
+    lastScannedCode = code;
+    scanCooldownUntil = Date.now() + 1800;
     await applyScannedBarcode(code, roi);
+    setTimeout(() => {
+      const guide = document.getElementById("scanGuideFrame");
+      if(guide) guide.classList.remove("locked");
+    }, 1500);
   }
 }catch(e){
 }finally{
@@ -1386,7 +1405,14 @@ updateTotals();
 renderTable();
 clearBundleInputs();
 playBeep(false);
-document.getElementById("barcode").focus();
+
+if(cameraStream){
+  scanCooldownUntil = 0;
+  const guide = document.getElementById("scanGuideFrame");
+  if(guide) guide.classList.remove("locked");
+} else {
+  document.getElementById("barcode").focus();
+}
 }
 
 function editItem(encodedBarcode){
