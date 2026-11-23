@@ -35,9 +35,57 @@ body{
 h2{text-align:center;color:#eaf5ef;margin:10px 0 14px 0}
 .dashboard{background:#dff4e7;color:#154360;padding:12px;border-radius:10px;text-align:center;margin-bottom:10px}
 .dashboard h1{font-size:30px;color:#147d46;margin:7px}
+.dashboard.out-mode{background:#fdebd0;color:#6e2c00}
+.dashboard.out-mode h1{color:#b95800}
+.dashboard.lookup-mode{background:#d6eaf8;color:#1b4f72}
+.dashboard.lookup-mode h1{color:#1f618d}
+
 .form-group{margin-bottom:8px}
 label{display:block;font-size:12px;color:#d5e0e4;margin-bottom:4px}
-input{width:100%;min-width:0;padding:10px;font-size:14px;border:1px solid #aebbc1;border-radius:6px;background:white;color:#17232a}
+input, select.form-select{width:100%;min-width:0;padding:10px;font-size:14px;border:1px solid #aebbc1;border-radius:6px;background:white;color:#17232a}
+select.mode-dropdown{
+  width:100%;
+  padding:11px 10px;
+  font-size:14px;
+  font-weight:bold;
+  border:2px solid #238b57;
+  border-radius:8px;
+  background:#1d313a;
+  color:#ffffff;
+  cursor:pointer;
+}
+select.mode-dropdown.out-active{border-color:#d97725;background:#3a2818}
+select.mode-dropdown.lookup-active{border-color:#2980b9;background:#1a3042}
+
+.mode-badge{
+  display:inline-block;
+  padding:3px 10px;
+  border-radius:12px;
+  font-size:11px;
+  font-weight:bold;
+  margin-bottom:4px;
+  background:#238b57;
+  color:white;
+}
+.mode-badge.out{background:#d97725}
+.mode-badge.lookup{background:#2980b9}
+
+.inventory-summary-strip{
+  display:flex;
+  justify-content:space-around;
+  gap:6px;
+  margin-top:8px;
+  padding-top:8px;
+  border-top:1px solid rgba(0,0,0,0.12);
+  font-size:11px;
+  font-weight:bold;
+}
+.inv-pill{
+  padding:3px 8px;
+  border-radius:6px;
+  background:rgba(255,255,255,0.65);
+}
+
 .row{display:flex;gap:7px}
 .col{flex:1;min-width:0}
 button{
@@ -57,6 +105,7 @@ button{
   gap:6px;
 }
 .btn-add{background:#238b57;color:white}
+.btn-out{background:#d97725;color:white}
 .btn-scan{background:#7650b5;color:white}
 .btn-excel{background:#218c52;color:white}
 .btn-pdf{background:#d97725;color:white}
@@ -64,6 +113,52 @@ button{
 .btn-row-edit{background:#c97816;color:white}
 .btn-action{width:auto;padding:7px 10px;font-size:11px;margin:2px 0;min-height:30px}
 .meta-box{background:#293c44;padding:10px;border-radius:8px;margin-bottom:10px}
+.lookup-box{background:#1f3447;border:1px solid #3c6382;padding:12px;border-radius:8px;margin-bottom:10px}
+.lookup-stats-grid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:6px;
+  margin-top:10px;
+}
+.lookup-stat-card{
+  background:#17232a;
+  border:1px solid #486575;
+  border-radius:6px;
+  padding:8px 6px;
+  text-align:center;
+}
+.lookup-stat-card .stat-title{font-size:10px;color:#b9c7cb;text-transform:uppercase}
+.lookup-stat-card .stat-val{font-size:15px;font-weight:bold;margin-top:2px}
+.lookup-stat-card .stat-sub{font-size:10px;color:#9fb3ba;margin-top:2px}
+.pallet-chip-list{
+  display:flex;
+  flex-wrap:wrap;
+  gap:5px;
+  margin-top:8px;
+}
+.pallet-chip{
+  width:auto;
+  min-height:28px;
+  padding:4px 9px;
+  font-size:11px;
+  margin-top:0;
+  background:#2c4a63;
+  color:#eaf5ef;
+  border:1px solid #4f7999;
+  border-radius:14px;
+}
+.pallet-chip.active-chip{background:#238b57;border-color:#81c784}
+.dir-badge{
+  display:inline-block;
+  padding:2px 6px;
+  border-radius:4px;
+  font-size:10px;
+  font-weight:bold;
+  color:white;
+}
+.dir-in{background:#238b57}
+.dir-out{background:#d97725}
+
 .alert{text-align:center;color:#ffcf70;font-weight:bold;font-size:12px;min-height:20px;margin:7px 0;overflow-wrap:anywhere}
 .table-wrap{width:100%;overflow-x:auto;margin-top:12px}
 table{width:100%;border-collapse:collapse;background:white;color:#17232a;font-size:11px}
@@ -139,8 +234,15 @@ th,td{border:1px solid #888}
 <body>
 
 <div class="app-container">
-<div class="no-print" style="display:flex; justify-content:flex-end; margin-bottom:5px;">
-  <select id="langSelect" onchange="changeLanguage(this.value)" style="width:auto; padding:5px; font-size:12px; background:#293c44; color:white; border:1px solid #53666e; border-radius:6px;">
+<div class="no-print" style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px;">
+  <div style="flex:1; min-width:0;">
+    <select id="palletTabSelect" class="mode-dropdown" onchange="switchPalletTab(this.value)" aria-label="Pallet Tab Mode">
+      <option value="in">📥 In Pallet Tab (Bought / Stock In)</option>
+      <option value="out">📤 Out Pallet Tab (Sold / Stock Out)</option>
+      <option value="lookup">📋 Pallet Tab (Check Scanned Tally Sheet)</option>
+    </select>
+  </div>
+  <select id="langSelect" onchange="changeLanguage(this.value)" style="width:auto; padding:8px 6px; font-size:12px; background:#293c44; color:white; border:1px solid #53666e; border-radius:6px;">
     <option value="en">English</option>
     <option value="vi">Tiếng Việt</option>
     <option value="zh">中文</option>
@@ -151,20 +253,74 @@ th,td{border:1px solid #888}
 
 <h2 id="lblMainHeader">🌿 VeneerTally Pro</h2>
 
-<div class="dashboard no-print">
+<div id="dashboardBox" class="dashboard no-print">
+<div id="modeBadge" class="mode-badge">📥 IN PALLET STORAGE (BOUGHT)</div>
 <div id="palletDisplay">Current Pallet: Pallet 01</div>
 <h1 id="totalM2">0.00 m²</h1>
 <div id="totalBundles">Total Bundles: 0</div>
 <div id="storageStatus" style="font-size:11px;margin-top:5px">TIMBERplus + Label OCR Dual Engine Active</div>
+<div class="inventory-summary-strip">
+  <span class="inv-pill" style="color:#147d46" id="invInSummary">IN: 0 bdl · 0.00 m²</span>
+  <span class="inv-pill" style="color:#b95800" id="invOutSummary">OUT: 0 bdl · 0.00 m²</span>
+  <span class="inv-pill" style="color:#1b4f72" id="invBalSummary">BAL: 0.00 m²</span>
+</div>
 </div>
 
 <div id="alertBox" class="alert" role="status"></div>
 
+<!-- PALLET LOOKUP & INVENTORY CHECK TAB PANEL -->
+<div id="palletLookupPanel" class="lookup-box no-print" style="display:none">
+  <div class="form-group">
+    <label for="lookupPalletInput" id="lblLookupPallet">Type or Select Scanned Pallet Number to View Full Tally Sheet</label>
+    <div class="row">
+      <div class="col">
+        <input id="lookupPalletInput" list="knownPalletsList" placeholder="e.g. Pallet 01 (leave blank for all pallets)" oninput="renderPalletLookup()" autocomplete="off">
+        <datalist id="knownPalletsList"></datalist>
+      </div>
+      <div style="width:92px">
+        <button type="button" class="btn-del" style="margin-top:0;min-height:40px;padding:8px" onclick="document.getElementById('lookupPalletInput').value='';renderPalletLookup()">All</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:6px">
+    <div class="col">
+      <select id="lookupDirectionFilter" class="form-select" onchange="renderPalletLookup()">
+        <option value="all">All Movements (In + Out)</option>
+        <option value="in">📥 Scanned In Only (Bought)</option>
+        <option value="out">📤 Scanned Out Only (Sold)</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="savedPalletChips" class="pallet-chip-list"></div>
+
+  <div class="lookup-stats-grid">
+    <div class="lookup-stat-card">
+      <div class="stat-title" id="lblStatIn">Scanned In</div>
+      <div class="stat-val" style="color:#2ecc71" id="lookupInM2">0.00 m²</div>
+      <div class="stat-sub" id="lookupInBdl">0 bundles</div>
+    </div>
+    <div class="lookup-stat-card">
+      <div class="stat-title" id="lblStatOut">Scanned Out</div>
+      <div class="stat-val" style="color:#f39c12" id="lookupOutM2">0.00 m²</div>
+      <div class="stat-sub" id="lookupOutBdl">0 bundles</div>
+    </div>
+    <div class="lookup-stat-card">
+      <div class="stat-title" id="lblStatNet">Net Balance</div>
+      <div class="stat-val" style="color:#5dade2" id="lookupNetM2">0.00 m²</div>
+      <div class="stat-sub" id="lookupNetBdl">0 bundles</div>
+    </div>
+  </div>
+</div>
+
+<!-- SCANNER & ENTRY WORKSPACE (IN PALLET / OUT PALLET) -->
+<div id="scannerWorkspace">
 <div class="meta-box no-print">
 <div class="row">
 <div class="col form-group">
 <label for="palletNum" id="lblPalletNum">Pallet Number</label>
-<input id="palletNum" value="Pallet 01" maxlength="60">
+<input id="palletNum" value="Pallet 01" maxlength="60" oninput="onPalletInputChanged()">
 </div>
 
 <div class="col form-group">
@@ -253,10 +409,11 @@ style="display:none" onchange="handleImageScan(event)">
 <button class="btn-add no-print" id="saveBtn" onclick="addBundle()">
 ➕ <span id="lblAddBundle">Add Bundle to Tally</span>
 </button>
+</div>
 
 <div class="no-print" style="margin-top:10px">
 <input id="searchFilter" placeholder="🔍 Search barcode, pallet or supplier"
-oninput="renderTable()" style="background:#293c44;color:white;border-color:#53666e">
+oninput="renderActiveView()" style="background:#293c44;color:white;border-color:#53666e">
 </div>
 
 <div class="table-wrap">
@@ -283,12 +440,12 @@ oninput="renderTable()" style="background:#293c44;color:white;border-color:#5366
 </div>
 
 <div class="row no-print" style="margin-top:10px">
-<div class="col"><button class="btn-del" onclick="deleteLast()">🗑️ <span id="lblDeleteLast">Delete Last</span></button></div>
+<div class="col" id="deleteLastCol"><button class="btn-del" onclick="deleteLast()">🗑️ <span id="lblDeleteLast">Delete Last</span></button></div>
 <div class="col"><button class="btn-excel" onclick="exportExcel()">📊 <span id="lblExportData">Export Data</span></button></div>
 <div class="col"><button class="btn-pdf" onclick="exportPDF()">📄 <span id="lblReportSummary">Report Summary</span></button></div>
 </div>
 
-<div class="row no-print">
+<div class="row no-print" id="palletManageRow">
 <div class="col"><button class="btn-scan" onclick="newPallet()">＋ <span id="lblNewPallet">New Pallet</span></button></div>
 <div class="col"><button class="btn-del" onclick="clearAll()"><span id="lblClearAll">Clear All Records</span></button></div>
 </div>
@@ -353,15 +510,29 @@ VeneerTally Pro · TIMBERplus, SF &amp; UROVO Hardware Optimized
 <script>
 "use strict";
 
-const STORAGE_KEY="veneerTallyPro_records_v13";
-const SETTINGS_KEY="veneerTallyPro_settings_v13";
+const LEGACY_STORAGE_KEY="veneerTallyPro_records_v13";
+const STORAGE_KEY_IN="veneerTallyPro_records_in_v14";
+const STORAGE_KEY_OUT="veneerTallyPro_records_out_v14";
+const SETTINGS_KEY="veneerTallyPro_settings_v14";
 const PWA_FALLBACK_URL="https://veneertally-pro.netlify.app";
 const CAMERA_LAUNCH_FALLBACK_MSG="Opening https://veneertally-pro.netlify.app in their mobile browser (such as Chrome on Android or Safari on iPhone) and saving it to their Home Screen (Add to Home screen / Install app) for browser-based camera access.";
 
+let inItems=[];
+let outItems=[];
 let items=[];
+let activePalletTab="in";
 let editingBarcode=null;
+let editingDirection=null;
 let currentLang="en";
 let deferredInstallPrompt=null;
+
+function getActiveItemsArray(){
+  return activePalletTab === "out" ? outItems : inItems;
+}
+
+function syncItemsPointer(){
+  items = getActiveItemsArray();
+}
 
 window.addEventListener("beforeinstallprompt", function(e){
   e.preventDefault();
@@ -436,12 +607,20 @@ const translations = {
   en: {
     appTitle: "VeneerTally Pro",
     mainHeader: "🌿 VeneerTally Pro",
+    tabInOption: "📥 In Pallet Tab (Bought / Stock In)",
+    tabOutOption: "📤 Out Pallet Tab (Sold / Stock Out)",
+    tabLookupOption: "📋 Pallet Tab (Check Scanned Tally Sheet)",
+    badgeIn: "📥 IN PALLET STORAGE (BOUGHT)",
+    badgeOut: "📤 OUT PALLET STORAGE (SOLD)",
+    badgeLookup: "📋 PALLET INVENTORY & TALLY VIEWER",
     palletDisplay: "Current Pallet: ",
     totalBundles: "Total Bundles: ",
     storageStatus: "TIMBERplus + Label OCR Dual Engine Active",
     palletNum: "Pallet Number",
     companyName: "Company / Supplier",
+    companyNameOut: "Customer / Buyer",
     companyPlaceholder: "Supplier name",
+    companyPlaceholderOut: "Customer / buyer name",
     veneerSpecie: "Veneer Species",
     speciePlaceholder: "e.g. Mapa Burl / Ebony / Oak",
     startScan: "START HIGH-SPEED CAMERA SCANNER",
@@ -456,7 +635,8 @@ const translations = {
     length: "Length (cm)",
     width: "Width (cm)",
     sheets: "Sheets",
-    addBundle: "Add Bundle to Tally",
+    addBundle: "Add Bundle to In Pallet",
+    addBundleOut: "Add Bundle to Out Pallet",
     updateBundle: "💾 Update Bundle",
     searchPlaceholder: "🔍 Search barcode, pallet or supplier",
     thPallet: "Pallet",
@@ -469,24 +649,36 @@ const translations = {
     exportData: "Export Data",
     reportSummary: "Report Summary",
     newPallet: "New Pallet",
-    clearAll: "Clear All Records",
+    clearAll: "Clear Current Tab",
     modalTitle: "Export Tally Report",
     modalSub: "Ready for Excel, Google Sheets, or Sharing:",
     copyClipboard: "COPY FORMATTED DATA TO CLIPBOARD",
     shareReport: "SHARE REPORT (WhatsApp / Email / Drive)",
     closeWindow: "Close Window",
     editBtn: "Edit",
-    delBtn: "Del"
+    delBtn: "Del",
+    lookupLabel: "Type or Select Scanned Pallet Number to View Full Tally Sheet",
+    statIn: "Scanned In",
+    statOut: "Scanned Out",
+    statNet: "Net Balance"
   },
   vi: {
     appTitle: "VeneerTally Pro",
     mainHeader: "🌿 VeneerTally Pro",
+    tabInOption: "📥 Tab Pallet Nhập (Mua Vào)",
+    tabOutOption: "📤 Tab Pallet Xuất (Bán Ra)",
+    tabLookupOption: "📋 Tab Tra Cứu Pallet (Xem Bảng Kê)",
+    badgeIn: "📥 KHO PALLET NHẬP (MUA VÀO)",
+    badgeOut: "📤 KHO PALLET XUẤT (BÁN RA)",
+    badgeLookup: "📋 TRA CỨU TỒN KHO & BẢNG KÊ PALLET",
     palletDisplay: "Pallet hiện tại: ",
     totalBundles: "Tổng số bó: ",
     storageStatus: "Động cơ kép TIMBERplus + OCR nhãn đang hoạt động",
     palletNum: "Số Pallet",
     companyName: "Công ty / Nhà cung cấp",
+    companyNameOut: "Khách hàng / Người mua",
     companyPlaceholder: "Tên nhà cung cấp",
+    companyPlaceholderOut: "Tên khách hàng",
     veneerSpecie: "Loại Gỗ Lạng",
     speciePlaceholder: "vd. Mapa Burl / Ebony / Oak",
     startScan: "BẮT ĐẦU QUÉT CAMERA TỐC ĐỘ CAO",
@@ -501,11 +693,12 @@ const translations = {
     length: "Chiều dài (cm)",
     width: "Chiều rộng (cm)",
     sheets: "Số tờ",
-    addBundle: "Thêm Bó vào Bảng Kê",
+    addBundle: "Thêm Bó vào Pallet Nhập",
+    addBundleOut: "Thêm Bó vào Pallet Xuất",
     updateBundle: "💾 Cập Nhật Bó",
     searchPlaceholder: "🔍 Tìm kiếm mã vạch, pallet hoặc nhà cung cấp",
     thPallet: "Pallet",
-    thSpeciesSupplier: "Loại gỗ / Nhà cung cấp",
+    thSpeciesSupplier: "Loại gỗ / Đối tác",
     thBarcodeBundle: "Mã vạch / Bó",
     thLenWidSheets: "Dài × Rộng × Tờ",
     thActions: "Thao tác",
@@ -514,24 +707,36 @@ const translations = {
     exportData: "Xuất Dữ Liệu",
     reportSummary: "Tóm Tắt Báo Cáo",
     newPallet: "Pallet Mới",
-    clearAll: "Xóa Tất Cả Bản Ghi",
+    clearAll: "Xóa Tab Hiện Tại",
     modalTitle: "Xuất Báo Cáo Bảng Kê",
     modalSub: "Sẵn sàng cho Excel, Google Sheets hoặc Chia sẻ:",
     copyClipboard: "SAO CHÉP DỮ LIỆU ĐÃ ĐỊNH DẠNG",
     shareReport: "CHIA SẺ BÁO CÁO (WhatsApp / Email / Drive)",
     closeWindow: "Đóng Cửa Sổ",
     editBtn: "Sửa",
-    delBtn: "Xóa"
+    delBtn: "Xóa",
+    lookupLabel: "Nhập hoặc chọn số Pallet đã quét để xem toàn bộ bảng kê",
+    statIn: "Đã Nhập",
+    statOut: "Đã Xuất",
+    statNet: "Tồn Kho"
   },
   zh: {
     appTitle: "VeneerTally Pro",
     mainHeader: "🌿 VeneerTally Pro",
+    tabInOption: "📥 入库卡板 (采购入库)",
+    tabOutOption: "📤 出库卡板 (销售出库)",
+    tabLookupOption: "📋 卡板查询 (查看完整码单)",
+    badgeIn: "📥 入库卡板库存 (采购)",
+    badgeOut: "📤 出库卡板记录 (销售)",
+    badgeLookup: "📋 卡板库存与完整码单查询",
     palletDisplay: "当前卡板: ",
     totalBundles: "总捆数: ",
     storageStatus: "TIMBERplus + 标签OCR双引擎已激活",
     palletNum: "卡板编号",
     companyName: "公司 / 供应商",
+    companyNameOut: "客户 / 买家",
     companyPlaceholder: "供应商名称",
+    companyPlaceholderOut: "客户名称",
     veneerSpecie: "木皮树种",
     speciePlaceholder: "例如: 树瘤 / 乌木 / 橡木",
     startScan: "启动高速相机扫描",
@@ -546,11 +751,12 @@ const translations = {
     length: "长度 (cm)",
     width: "宽度 (cm)",
     sheets: "张数",
-    addBundle: "添加捆数到统计",
+    addBundle: "添加到入库卡板",
+    addBundleOut: "添加到出库卡板",
     updateBundle: "💾 更新捆数",
     searchPlaceholder: "🔍 搜索条形码、卡板或供应商",
     thPallet: "卡板",
-    thSpeciesSupplier: "树种 / 供应商",
+    thSpeciesSupplier: "树种 / 往来单位",
     thBarcodeBundle: "条形码 / 捆号",
     thLenWidSheets: "长 × 宽 × 张数",
     thActions: "操作",
@@ -559,24 +765,36 @@ const translations = {
     exportData: "导出数据",
     reportSummary: "报告摘要",
     newPallet: "新卡板",
-    clearAll: "清除所有记录",
+    clearAll: "清除当前标签记录",
     modalTitle: "导出统计报告",
     modalSub: "适用于 Excel、Google Sheets 或分享：",
     copyClipboard: "复制格式化数据到剪贴板",
     shareReport: "分享报告 (WhatsApp / 电子邮件 / 云端硬盘)",
     closeWindow: "关闭窗口",
     editBtn: "编辑",
-    delBtn: "删除"
+    delBtn: "删除",
+    lookupLabel: "输入或选择已扫描卡板号以查看完整码单",
+    statIn: "已入库",
+    statOut: "已出库",
+    statNet: "当前结存"
   },
   ja: {
     appTitle: "VeneerTally Pro",
     mainHeader: "🌿 VeneerTally Pro",
+    tabInOption: "📥 入庫パレット (仕入・在庫入)",
+    tabOutOption: "📤 出庫パレット (販売・出荷)",
+    tabLookupOption: "📋 パレット検索 (集計表確認)",
+    badgeIn: "📥 入庫パレット保管 (仕入)",
+    badgeOut: "📤 出庫パレット保管 (販売)",
+    badgeLookup: "📋 パレット在庫・集計表ビューア",
     palletDisplay: "現在のパレット: ",
     totalBundles: "合計束数: ",
     storageStatus: "TIMBERplus + ラベルOCR デュアルエンジン有効",
     palletNum: "パレット番号",
     companyName: "会社 / サプライヤー",
+    companyNameOut: "顧客 / 販売先",
     companyPlaceholder: "サプライヤー名",
+    companyPlaceholderOut: "顧客名",
     veneerSpecie: "ツキ板樹種",
     speciePlaceholder: "例: バーチ / 黒檀 / オーク",
     startScan: "高速カメラスキャナー開始",
@@ -591,11 +809,12 @@ const translations = {
     length: "長さ (cm)",
     width: "幅 (cm)",
     sheets: "枚数",
-    addBundle: "集計に束を追加",
+    addBundle: "入庫パレットに追加",
+    addBundleOut: "出庫パレットに追加",
     updateBundle: "💾 束を更新",
     searchPlaceholder: "🔍 バーコード、パレット、サプライヤーを検索",
     thPallet: "パレット",
-    thSpeciesSupplier: "樹種 / サプライヤー",
+    thSpeciesSupplier: "樹種 / 取引先",
     thBarcodeBundle: "バーコード / 束",
     thLenWidSheets: "長 × 幅 × 枚数",
     thActions: "操作",
@@ -604,24 +823,36 @@ const translations = {
     exportData: "データエクスポート",
     reportSummary: "レポート概要",
     newPallet: "新しいパレット",
-    clearAll: "全レコードをクリア",
+    clearAll: "現在のタブをクリア",
     modalTitle: "集計レポートのエクスポート",
     modalSub: "Excel、Googleスプレッドシート、または共有の準備完了:",
     copyClipboard: "クリップボードにデータをコピー",
     shareReport: "レポートを共有 (WhatsApp / メール / ドライブ)",
     closeWindow: "ウィンドウを閉じる",
     editBtn: "編集",
-    delBtn: "削除"
+    delBtn: "削除",
+    lookupLabel: "スキャン済みパレット番号を入力して集計表を表示",
+    statIn: "入庫合計",
+    statOut: "出庫合計",
+    statNet: "在庫残高"
   },
   ko: {
     appTitle: "VeneerTally Pro",
     mainHeader: "🌿 VeneerTally Pro",
+    tabInOption: "📥 입고 파레트 탭 (매입 / 입고)",
+    tabOutOption: "📤 출고 파레트 탭 (매출 / 출고)",
+    tabLookupOption: "📋 파레트 조회 탭 (집계표 확인)",
+    badgeIn: "📥 입고 파레트 보관함 (매입)",
+    badgeOut: "📤 출고 파레트 보관함 (판매)",
+    badgeLookup: "📋 파레트 재고 및 집계표 조회",
     palletDisplay: "현재 파레트: ",
     totalBundles: "총 번들수: ",
     storageStatus: "TIMBERplus + 라벨 OCR 듀얼 엔진 활성화됨",
     palletNum: "파레트 번호",
     companyName: "회사 / 공급업체",
+    companyNameOut: "고객사 / 구매처",
     companyPlaceholder: "공급업체 이름",
+    companyPlaceholderOut: "고객사 이름",
     veneerSpecie: "무늬목 수종",
     speciePlaceholder: "예: 버블 / 흑단 / 오크",
     startScan: "고속 카메라 스캐너 시작",
@@ -636,11 +867,12 @@ const translations = {
     length: "길이 (cm)",
     width: "너비 (cm)",
     sheets: "매수",
-    addBundle: "집계에 번들 추가",
+    addBundle: "입고 파레트에 추가",
+    addBundleOut: "출고 파레트에 추가",
     updateBundle: "💾 번들 수정",
     searchPlaceholder: "🔍 바코드, 파레트 또는 공급업체 검색",
     thPallet: "파레트",
-    thSpeciesSupplier: "수종 / 공급업체",
+    thSpeciesSupplier: "수종 / 거래처",
     thBarcodeBundle: "바코드 / 번들",
     thLenWidSheets: "길이 × 너비 × 매수",
     thActions: "작업",
@@ -649,28 +881,104 @@ const translations = {
     exportData: "데이터 내보내기",
     reportSummary: "보고서 요약",
     newPallet: "새 파레트",
-    clearAll: "모든 기록 지우기",
+    clearAll: "현재 탭 기록 지우기",
     modalTitle: "집계 보고서 내보내기",
     modalSub: "Excel, Google 스프레드시트 또는 공유 준비 완료:",
     copyClipboard: "클립보드에 데이터 복사",
     shareReport: "보고서 공유 (WhatsApp / 이메일 / 드라이브)",
     closeWindow: "창 닫기",
     editBtn: "수정",
-    delBtn: "삭제"
+    delBtn: "삭제",
+    lookupLabel: "스캔된 파레트 번호를 입력하여 전체 집계표 확인",
+    statIn: "입고 합계",
+    statOut: "출고 합계",
+    statNet: "현재 잔고"
   }
 };
+
+function switchPalletTab(tabMode){
+  if(tabMode !== "in" && tabMode !== "out" && tabMode !== "lookup") tabMode = "in";
+  activePalletTab = tabMode;
+  document.getElementById("palletTabSelect").value = tabMode;
+  syncItemsPointer();
+  lastScannedCode = "";
+
+  const selectEl = document.getElementById("palletTabSelect");
+  const dashEl = document.getElementById("dashboardBox");
+  const badgeEl = document.getElementById("modeBadge");
+  const workspaceEl = document.getElementById("scannerWorkspace");
+  const lookupEl = document.getElementById("palletLookupPanel");
+  const delLastCol = document.getElementById("deleteLastCol");
+  const palletManageRow = document.getElementById("palletManageRow");
+  const saveBtn = document.getElementById("saveBtn");
+  const t = translations[currentLang] || translations.en;
+
+  selectEl.classList.remove("out-active", "lookup-active");
+  dashEl.classList.remove("out-mode", "lookup-mode");
+  badgeEl.classList.remove("out", "lookup");
+
+  if(tabMode === "in"){
+    badgeEl.textContent = t.badgeIn;
+    workspaceEl.style.display = "block";
+    lookupEl.style.display = "none";
+    delLastCol.style.display = "block";
+    palletManageRow.style.display = "flex";
+    document.getElementById("lblCompanyName").textContent = t.companyName;
+    document.getElementById("companyName").placeholder = t.companyPlaceholder;
+    saveBtn.className = "btn-add no-print";
+    if(editingBarcode === null){
+      saveBtn.innerHTML = '➕ <span id="lblAddBundle">' + t.addBundle + '</span>';
+    }
+  } else if(tabMode === "out"){
+    selectEl.classList.add("out-active");
+    dashEl.classList.add("out-mode");
+    badgeEl.classList.add("out");
+    badgeEl.textContent = t.badgeOut;
+    workspaceEl.style.display = "block";
+    lookupEl.style.display = "none";
+    delLastCol.style.display = "block";
+    palletManageRow.style.display = "flex";
+    document.getElementById("lblCompanyName").textContent = t.companyNameOut;
+    document.getElementById("companyName").placeholder = t.companyPlaceholderOut;
+    saveBtn.className = "btn-out no-print";
+    if(editingBarcode === null){
+      saveBtn.innerHTML = '📤 <span id="lblAddBundle">' + t.addBundleOut + '</span>';
+    }
+  } else {
+    stopCameraScanner();
+    selectEl.classList.add("lookup-active");
+    dashEl.classList.add("lookup-mode");
+    badgeEl.classList.add("lookup");
+    badgeEl.textContent = t.badgeLookup;
+    workspaceEl.style.display = "none";
+    lookupEl.style.display = "block";
+    delLastCol.style.display = "none";
+    palletManageRow.style.display = "none";
+    refreshKnownPalletsList();
+  }
+
+  saveToStorage();
+  updateTotals();
+  renderActiveView();
+}
 
 function changeLanguage(lang){
   if(!translations[lang]) lang = "en";
   currentLang = lang;
-  try{ localStorage.setItem(STORAGE_KEY+"_lang", lang); }catch(e){}
+  try{ localStorage.setItem(SETTINGS_KEY+"_lang", lang); }catch(e){}
   
   const t = translations[lang];
   document.getElementById("appTitle").textContent = t.appTitle;
   document.getElementById("lblMainHeader").textContent = t.mainHeader;
+
+  const tabSel = document.getElementById("palletTabSelect");
+  tabSel.options[0].text = t.tabInOption;
+  tabSel.options[1].text = t.tabOutOption;
+  tabSel.options[2].text = t.tabLookupOption;
+
   document.getElementById("lblPalletNum").textContent = t.palletNum;
-  document.getElementById("lblCompanyName").textContent = t.companyName;
-  document.getElementById("companyName").placeholder = t.companyPlaceholder;
+  document.getElementById("lblCompanyName").textContent = activePalletTab === "out" ? t.companyNameOut : t.companyName;
+  document.getElementById("companyName").placeholder = activePalletTab === "out" ? t.companyPlaceholderOut : t.companyPlaceholder;
   document.getElementById("lblVeneerSpecie").textContent = t.veneerSpecie;
   document.getElementById("veneerSpecie").placeholder = t.speciePlaceholder;
   document.getElementById("lblStartScan").textContent = t.startScan;
@@ -685,12 +993,18 @@ function changeLanguage(lang){
   document.getElementById("lblLength").textContent = t.length;
   document.getElementById("lblWidth").textContent = t.width;
   document.getElementById("lblSheets").textContent = t.sheets;
+  document.getElementById("lblLookupPallet").textContent = t.lookupLabel;
+  document.getElementById("lblStatIn").textContent = t.statIn;
+  document.getElementById("lblStatOut").textContent = t.statOut;
+  document.getElementById("lblStatNet").textContent = t.statNet;
   
   const saveBtn = document.getElementById("saveBtn");
   if(editingBarcode !== null){
     saveBtn.innerHTML = '💾 <span id="lblUpdateBundle">' + t.updateBundle.replace('💾 ','') + '</span>';
   } else {
-    saveBtn.innerHTML = '➕ <span id="lblAddBundle">' + t.addBundle + '</span>';
+    const addTxt = activePalletTab === "out" ? t.addBundleOut : t.addBundle;
+    const icon = activePalletTab === "out" ? '📤' : '➕';
+    saveBtn.innerHTML = icon + ' <span id="lblAddBundle">' + addTxt + '</span>';
   }
   
   document.getElementById("searchFilter").placeholder = t.searchPlaceholder;
@@ -713,8 +1027,7 @@ function changeLanguage(lang){
   document.getElementById("lblShareReport").textContent = t.shareReport;
   document.getElementById("lblCloseWindow").textContent = t.closeWindow;
   
-  updateTotals();
-  renderTable();
+  switchPalletTab(activePalletTab);
 }
 
 function getValue(id){ return document.getElementById(id).value.trim(); }
@@ -812,7 +1125,8 @@ function isDuplicateBarcode(code){
 const normCode=String(code||"").trim().toLowerCase();
 if(!normCode) return false;
 if(lastScannedCode && lastScannedCode.trim().toLowerCase()===normCode) return true;
-return items.some(it => String(it.barcode||"").trim().toLowerCase()===normCode);
+const activeArr = getActiveItemsArray();
+return activeArr.some(it => String(it.barcode||"").trim().toLowerCase()===normCode);
 }
 
 function cleanDim(val){
@@ -948,6 +1262,7 @@ if(!code){ playBeep(true); showMessage("Empty barcode returned.",true); return; 
 
 const guide = document.getElementById("scanGuideFrame");
 const repeated = isDuplicateBarcode(code);
+const tabLabel = activePalletTab === "out" ? "OUT PALLET" : "IN PALLET";
 
 if(repeated){
   if(guide){
@@ -956,7 +1271,7 @@ if(repeated){
     setTimeout(() => guide.classList.remove("repeat-warn"), 1500);
   }
   playRepeatBeep();
-  showMessage("⚠️ DUPLICATE / REPEAT BARCODE DETECTED: " + code + " was already scanned!", true);
+  showMessage("⚠️ DUPLICATE / REPEAT BARCODE DETECTED IN " + tabLabel + ": " + code + " was already scanned!", true);
   lastScannedCode = code;
   return;
 }
@@ -969,6 +1284,19 @@ if(guide){
 lastScannedCode = code;
 setValue("barcode", code);
 let parsed = parseVeneerBarcode(code);
+
+/* If scanning into Out Pallet and dimensions aren't encoded in barcode, auto-fill from matching In Pallet stock if available */
+if(parsed.length === null && activePalletTab === "out"){
+  const inMatch = inItems.find(it => String(it.barcode || "").trim().toLowerCase() === code.toLowerCase());
+  if(inMatch){
+    parsed.length = Number(inMatch.length);
+    parsed.width = Number(inMatch.width);
+    parsed.sheets = Number(inMatch.sheets);
+    if(inMatch.bundleNum) parsed.bundle = inMatch.bundleNum;
+    if(inMatch.species && !getValue("veneerSpecie")) setValue("veneerSpecie", inMatch.species);
+    parsed.source = "Matched In-Stock Inventory";
+  }
+}
 
 if(parsed.length === null && snapshotCanvas){
   showMessage("Barcode ID " + code + " locked. Reading L / W / Sheets...");
@@ -988,11 +1316,11 @@ if(parsed.length !== null){
   setValue("width", String(parsed.width));
   setValue("sheets", String(parsed.sheets));
   if(parsed.bundle) setValue("bundleNum", parsed.bundle);
-  showMessage("Captured (" + parsed.source + "): " + parsed.length + " × " + parsed.width + " × " + parsed.sheets + " (" + calculateArea(parsed.length, parsed.width, parsed.sheets) + " m²)");
+  showMessage("[" + tabLabel + "] Captured (" + parsed.source + "): " + parsed.length + " × " + parsed.width + " × " + parsed.sheets + " (" + calculateArea(parsed.length, parsed.width, parsed.sheets) + " m²)");
   playBeep(false);
 } else {
   if(parsed.bundle) setValue("bundleNum", parsed.bundle);
-  showMessage("Barcode ID: " + code + ". Tap 'Instant Snap' with full label in box or enter L/W/Sheets.", true);
+  showMessage("[" + tabLabel + "] Barcode ID: " + code + ". Tap 'Instant Snap' with full label in box or enter L/W/Sheets.", true);
   playBeep(false);
 }
 if(!cameraStream){
@@ -1222,7 +1550,6 @@ async function startCameraScanner(){
 stopCameraScanner();
 getAudioCtx();
 
-// Show modal with Open Netlify + Install App buttons immediately on camera launch
 openCameraFallbackModal("Launching camera scanner:");
 
 if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
@@ -1364,45 +1691,105 @@ reader.readAsDataURL(file);
 
 function saveToStorage(){
 try{
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  localStorage.setItem(STORAGE_KEY_IN, JSON.stringify(inItems));
+  localStorage.setItem(STORAGE_KEY_OUT, JSON.stringify(outItems));
   localStorage.setItem(SETTINGS_KEY, JSON.stringify({
     palletNum: getValue("palletNum") || "Pallet 01",
     companyName: getValue("companyName"),
-    veneerSpecie: getValue("veneerSpecie")
+    veneerSpecie: getValue("veneerSpecie"),
+    activePalletTab: activePalletTab
   }));
 }catch(e){}
 }
 
 function loadFromStorage(){
 try{
-  const savedLang = localStorage.getItem(STORAGE_KEY+"_lang");
+  const savedLang = localStorage.getItem(SETTINGS_KEY+"_lang") || localStorage.getItem(LEGACY_STORAGE_KEY+"_lang");
   if(savedLang && translations[savedLang]){
     currentLang = savedLang;
     document.getElementById("langSelect").value = savedLang;
   }
-  const rawItems = localStorage.getItem(STORAGE_KEY);
-  if(rawItems){
-    const parsed = JSON.parse(rawItems);
-    if(Array.isArray(parsed)) items = parsed;
+
+  const rawIn = localStorage.getItem(STORAGE_KEY_IN);
+  const rawOut = localStorage.getItem(STORAGE_KEY_OUT);
+
+  if(rawIn !== null){
+    const parsedIn = JSON.parse(rawIn);
+    if(Array.isArray(parsedIn)) inItems = parsedIn;
+  } else {
+    /* Migrate legacy v13 records into In Pallet storage so zero data is lost */
+    const legacyRaw = localStorage.getItem(LEGACY_STORAGE_KEY);
+    if(legacyRaw){
+      const parsedLegacy = JSON.parse(legacyRaw);
+      if(Array.isArray(parsedLegacy)){
+        inItems = parsedLegacy.map(r => Object.assign({ direction: "in" }, r));
+      }
+    }
   }
-  const rawSettings = localStorage.getItem(SETTINGS_KEY);
+
+  if(rawOut !== null){
+    const parsedOut = JSON.parse(rawOut);
+    if(Array.isArray(parsedOut)) outItems = parsedOut;
+  }
+
+  const rawSettings = localStorage.getItem(SETTINGS_KEY) || localStorage.getItem("veneerTallyPro_settings_v13");
   if(rawSettings){
     const s = JSON.parse(rawSettings);
     if(s.palletNum) setValue("palletNum", s.palletNum);
     if(s.companyName) setValue("companyName", s.companyName);
     if(s.veneerSpecie) setValue("veneerSpecie", s.veneerSpecie);
+    if(s.activePalletTab && (s.activePalletTab === "in" || s.activePalletTab === "out" || s.activePalletTab === "lookup")){
+      activePalletTab = s.activePalletTab;
+    }
   }
+  syncItemsPointer();
 }catch(e){}
+}
+
+function onPalletInputChanged(){
+  saveToStorage();
+  updateTotals();
+}
+
+function computeInventoryTotals(){
+  let inM2 = 0;
+  for(const it of inItems) inM2 = roundArea(inM2 + (Number(it.area) || 0));
+  let outM2 = 0;
+  for(const it of outItems) outM2 = roundArea(outM2 + (Number(it.area) || 0));
+  const netM2 = roundArea(inM2 - outM2);
+  return {
+    inCount: inItems.length,
+    inM2,
+    outCount: outItems.length,
+    outM2,
+    netCount: inItems.length - outItems.length,
+    netM2
+  };
 }
 
 function updateTotals(){
 const t = translations[currentLang] || translations.en;
+const inv = computeInventoryTotals();
+
+document.getElementById("invInSummary").textContent = "IN: " + inv.inCount + " bdl · " + inv.inM2.toFixed(2) + " m²";
+document.getElementById("invOutSummary").textContent = "OUT: " + inv.outCount + " bdl · " + inv.outM2.toFixed(2) + " m²";
+document.getElementById("invBalSummary").textContent = "BAL: " + inv.netM2.toFixed(2) + " m²";
+
+if(activePalletTab === "lookup"){
+  const typedPallet = getValue("lookupPalletInput");
+  document.getElementById("palletDisplay").textContent = typedPallet ? (t.palletDisplay + typedPallet) : "All Scanned Pallets (In + Out)";
+  document.getElementById("totalM2").textContent = inv.netM2.toFixed(2) + " m²";
+  document.getElementById("totalBundles").textContent = "In: " + inv.inCount + " | Out: " + inv.outCount + " | Net: " + inv.netCount;
+  return;
+}
+
+const activeArr = getActiveItemsArray();
 const pallet = getValue("palletNum") || "Pallet 01";
 document.getElementById("palletDisplay").textContent = t.palletDisplay + pallet;
-document.getElementById("totalBundles").textContent = t.totalBundles + items.length;
+document.getElementById("totalBundles").textContent = t.totalBundles + activeArr.length;
 
 let grandTotal = 0;
-for(const it of items){
+for(const it of activeArr){
   grandTotal = roundArea(grandTotal + (Number(it.area) || 0));
 }
 document.getElementById("totalM2").textContent = grandTotal.toFixed(2) + " m²";
@@ -1417,13 +1804,141 @@ return String(str || "")
   .replace(/"/g, "&quot;");
 }
 
+function refreshKnownPalletsList(){
+  const map = new Map();
+  inItems.forEach(it => {
+    const p = String(it.pallet || "").trim();
+    if(!p) return;
+    if(!map.has(p)) map.set(p, { inBdl: 0, outBdl: 0 });
+    map.get(p).inBdl++;
+  });
+  outItems.forEach(it => {
+    const p = String(it.pallet || "").trim();
+    if(!p) return;
+    if(!map.has(p)) map.set(p, { inBdl: 0, outBdl: 0 });
+    map.get(p).outBdl++;
+  });
+
+  const dl = document.getElementById("knownPalletsList");
+  const chips = document.getElementById("savedPalletChips");
+  const currentQuery = getValue("lookupPalletInput").toLowerCase();
+  dl.innerHTML = "";
+  chips.innerHTML = "";
+
+  map.forEach((counts, palletName) => {
+    const opt = document.createElement("option");
+    opt.value = palletName;
+    dl.appendChild(opt);
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "pallet-chip" + (currentQuery === palletName.toLowerCase() ? " active-chip" : "");
+    btn.textContent = palletName + " (In:" + counts.inBdl + " / Out:" + counts.outBdl + ")";
+    btn.onclick = function(){
+      document.getElementById("lookupPalletInput").value = palletName;
+      renderPalletLookup();
+    };
+    chips.appendChild(btn);
+  });
+}
+
+function getFilteredLookupRecords(){
+  const palletQuery = getValue("lookupPalletInput").toLowerCase();
+  const dirFilter = document.getElementById("lookupDirectionFilter").value || "all";
+  const searchQuery = (document.getElementById("searchFilter").value || "").toLowerCase().trim();
+
+  let combined = [];
+  if(dirFilter === "all" || dirFilter === "in"){
+    combined = combined.concat(inItems.map(it => Object.assign({}, it, { _dir: "in" })));
+  }
+  if(dirFilter === "all" || dirFilter === "out"){
+    combined = combined.concat(outItems.map(it => Object.assign({}, it, { _dir: "out" })));
+  }
+
+  return combined.filter(it => {
+    if(palletQuery && !String(it.pallet || "").toLowerCase().includes(palletQuery)) return false;
+    if(searchQuery){
+      const hay = [it.pallet, it.species, it.company, it.barcode, it.bundleNum, it._dir].join(" ").toLowerCase();
+      if(!hay.includes(searchQuery)) return false;
+    }
+    return true;
+  });
+}
+
+function renderPalletLookup(){
+  const t = translations[currentLang] || translations.en;
+  refreshKnownPalletsList();
+  const records = getFilteredLookupRecords();
+  const tbody = document.getElementById("tallyBody");
+  tbody.innerHTML = "";
+
+  let inM2 = 0, inBdl = 0, outM2 = 0, outBdl = 0;
+
+  for(const it of records){
+    const area = Number(it.area) || 0;
+    if(it._dir === "out"){
+      outM2 = roundArea(outM2 + area);
+      outBdl++;
+    } else {
+      inM2 = roundArea(inM2 + area);
+      inBdl++;
+    }
+
+    const dirBadge = it._dir === "out"
+      ? '<span class="dir-badge dir-out">OUT</span>'
+      : '<span class="dir-badge dir-in">IN</span>';
+
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      "<td>" + escapeHtml(it.pallet) + "<br>" + dirBadge + "</td>" +
+      "<td>" + escapeHtml(it.species) + (it.company ? "<br><small>" + escapeHtml(it.company) + "</small>" : "") + "</td>" +
+      "<td>" + escapeHtml(it.barcode) + (it.bundleNum ? "<br><small>#" + escapeHtml(it.bundleNum) + "</small>" : "") + "</td>" +
+      "<td>" + escapeHtml(it.length) + " × " + escapeHtml(it.width) + " × " + escapeHtml(it.sheets) + "</td>" +
+      "<td><strong>" + area.toFixed(2) + "</strong></td>" +
+      "<td class=\"no-print\">" +
+        "<button class=\"btn-row-edit btn-action\" onclick=\"editItem('" + encodeURIComponent(it.barcode) + "','" + it._dir + "')\">" + escapeHtml(t.editBtn) + "</button> " +
+        "<button class=\"btn-row-del btn-action\" onclick=\"deleteItem('" + encodeURIComponent(it.barcode) + "','" + it._dir + "')\">" + escapeHtml(t.delBtn) + "</button>" +
+      "</td>";
+    tbody.appendChild(tr);
+  }
+
+  const netM2 = roundArea(inM2 - outM2);
+  const netBdl = inBdl - outBdl;
+
+  document.getElementById("lookupInM2").textContent = inM2.toFixed(2) + " m²";
+  document.getElementById("lookupInBdl").textContent = inBdl + " bundles";
+  document.getElementById("lookupOutM2").textContent = outM2.toFixed(2) + " m²";
+  document.getElementById("lookupOutBdl").textContent = outBdl + " bundles";
+  document.getElementById("lookupNetM2").textContent = netM2.toFixed(2) + " m²";
+  document.getElementById("lookupNetBdl").textContent = netBdl + " bundles";
+
+  const dirFilter = document.getElementById("lookupDirectionFilter").value || "all";
+  const tableTotal = dirFilter === "in" ? inM2 : (dirFilter === "out" ? outM2 : netM2);
+  document.getElementById("tableGrandTotal").textContent = tableTotal.toFixed(2) + " m²";
+
+  const typedPallet = getValue("lookupPalletInput");
+  document.getElementById("palletDisplay").textContent = typedPallet ? (t.palletDisplay + typedPallet) : "All Scanned Pallets (In + Out)";
+  document.getElementById("totalM2").textContent = netM2.toFixed(2) + " m²";
+  document.getElementById("totalBundles").textContent = "In: " + inBdl + " | Out: " + outBdl + " | Net: " + netBdl;
+}
+
+function renderActiveView(){
+  if(activePalletTab === "lookup"){
+    renderPalletLookup();
+  } else {
+    renderTable();
+  }
+}
+
 function renderTable(){
 const t = translations[currentLang] || translations.en;
 const query = (document.getElementById("searchFilter").value || "").toLowerCase().trim();
 const tbody = document.getElementById("tallyBody");
 tbody.innerHTML = "";
+const activeArr = getActiveItemsArray();
+const dir = activePalletTab === "out" ? "out" : "in";
 
-for(const it of items){
+for(const it of activeArr){
   const hay = [it.pallet, it.species, it.company, it.barcode, it.bundleNum].join(" ").toLowerCase();
   if(query && !hay.includes(query)) continue;
 
@@ -1435,8 +1950,8 @@ for(const it of items){
     "<td>" + escapeHtml(it.length) + " × " + escapeHtml(it.width) + " × " + escapeHtml(it.sheets) + "</td>" +
     "<td><strong>" + Number(it.area).toFixed(2) + "</strong></td>" +
     "<td class=\"no-print\">" +
-      "<button class=\"btn-row-edit btn-action\" onclick=\"editItem('" + encodeURIComponent(it.barcode) + "')\">" + escapeHtml(t.editBtn) + "</button> " +
-      "<button class=\"btn-row-del btn-action\" onclick=\"deleteItem('" + encodeURIComponent(it.barcode) + "')\">" + escapeHtml(t.delBtn) + "</button>" +
+      "<button class=\"btn-row-edit btn-action\" onclick=\"editItem('" + encodeURIComponent(it.barcode) + "','" + dir + "')\">" + escapeHtml(t.editBtn) + "</button> " +
+      "<button class=\"btn-row-del btn-action\" onclick=\"deleteItem('" + encodeURIComponent(it.barcode) + "','" + dir + "')\">" + escapeHtml(t.delBtn) + "</button>" +
     "</td>";
   tbody.appendChild(tr);
 }
@@ -1449,11 +1964,16 @@ setValue("length", "");
 setValue("width", "");
 setValue("sheets", "1");
 editingBarcode = null;
+editingDirection = null;
 const t = translations[currentLang] || translations.en;
-document.getElementById("saveBtn").innerHTML = '➕ <span id="lblAddBundle">' + t.addBundle + '</span>';
+const addTxt = activePalletTab === "out" ? t.addBundleOut : t.addBundle;
+const icon = activePalletTab === "out" ? '📤' : '➕';
+document.getElementById("saveBtn").innerHTML = icon + ' <span id="lblAddBundle">' + addTxt + '</span>';
 }
 
 function addBundle(){
+const targetDir = editingDirection || (activePalletTab === "out" ? "out" : "in");
+const targetArr = targetDir === "out" ? outItems : inItems;
 const pallet = getValue("palletNum") || "Pallet 01";
 const company = getValue("companyName");
 const species = getValue("veneerSpecie");
@@ -1470,24 +1990,26 @@ if(!Number.isFinite(length) || length <= 0 || !Number.isFinite(width) || width <
 }
 
 const area = calculateArea(length, width, sheets);
-const record = { pallet, company, species, barcode, bundleNum, length, width, sheets, area };
+const record = { pallet, company, species, barcode, bundleNum, length, width, sheets, area, direction: targetDir };
+const label = targetDir === "out" ? "Out Pallet" : "In Pallet";
 
 if(editingBarcode !== null){
-  const idx = items.findIndex(i => i.barcode === editingBarcode);
+  const idx = targetArr.findIndex(i => i.barcode === editingBarcode);
   if(idx !== -1){
-    items[idx] = record;
+    targetArr[idx] = record;
   } else {
-    items.unshift(record);
+    targetArr.unshift(record);
   }
-  showMessage("Updated bundle (" + area.toFixed(2) + " m²).");
+  showMessage("Updated " + label + " bundle (" + area.toFixed(2) + " m²).");
 } else {
-  items.unshift(record);
-  showMessage("Added bundle (" + area.toFixed(2) + " m²).");
+  targetArr.unshift(record);
+  showMessage("Added to " + label + " (" + area.toFixed(2) + " m²).");
 }
 
+syncItemsPointer();
 saveToStorage();
 updateTotals();
-renderTable();
+renderActiveView();
 clearBundleInputs();
 playBeep(false);
 
@@ -1503,9 +2025,14 @@ if(cameraStream){
 }
 }
 
-function editItem(encodedBarcode){
+function editItem(encodedBarcode, dir){
 const code = decodeURIComponent(encodedBarcode);
-const found = items.find(i => i.barcode === code);
+const targetDir = dir || (activePalletTab === "out" ? "out" : "in");
+if(activePalletTab === "lookup"){
+  switchPalletTab(targetDir);
+}
+const targetArr = targetDir === "out" ? outItems : inItems;
+const found = targetArr.find(i => i.barcode === code);
 if(!found) return;
 
 setValue("palletNum", found.pallet || "Pallet 01");
@@ -1518,30 +2045,40 @@ setValue("width", found.width || "");
 setValue("sheets", found.sheets || 1);
 
 editingBarcode = found.barcode;
+editingDirection = targetDir;
 const t = translations[currentLang] || translations.en;
 document.getElementById("saveBtn").innerHTML = '💾 <span id="lblUpdateBundle">' + t.updateBundle.replace('💾 ','') + '</span>';
-showMessage("Editing barcode: " + found.barcode);
+showMessage("Editing [" + targetDir.toUpperCase() + "] barcode: " + found.barcode);
 }
 
-function deleteItem(encodedBarcode){
+function deleteItem(encodedBarcode, dir){
 const code = decodeURIComponent(encodedBarcode);
-items = items.filter(i => i.barcode !== code);
+const targetDir = dir || (activePalletTab === "out" ? "out" : "in");
+if(targetDir === "out"){
+  outItems = outItems.filter(i => i.barcode !== code);
+} else {
+  inItems = inItems.filter(i => i.barcode !== code);
+}
+syncItemsPointer();
 if(editingBarcode === code) clearBundleInputs();
 saveToStorage();
 updateTotals();
-renderTable();
-showMessage("Deleted record.");
+renderActiveView();
+showMessage("Deleted [" + targetDir.toUpperCase() + "] record.");
 }
 
 function deleteLast(){
-if(items.length === 0){
-  showMessage("No records to delete.", true);
+if(activePalletTab === "lookup") return;
+const activeArr = getActiveItemsArray();
+if(activeArr.length === 0){
+  showMessage("No records to delete in current tab.", true);
   return;
 }
-items.shift();
+activeArr.shift();
+syncItemsPointer();
 saveToStorage();
 updateTotals();
-renderTable();
+renderActiveView();
 showMessage("Deleted latest bundle.");
 }
 
@@ -1561,21 +2098,48 @@ showMessage("Switched to " + nextName);
 }
 
 function clearAll(){
-if(items.length === 0) return;
-if(!confirm("Clear all tally records?")) return;
-items = [];
+if(activePalletTab === "lookup") return;
+const activeArr = getActiveItemsArray();
+if(activeArr.length === 0) return;
+const label = activePalletTab === "out" ? "Out Pallet" : "In Pallet";
+if(!confirm("Clear all " + label + " records?")) return;
+if(activePalletTab === "out"){
+  outItems = [];
+} else {
+  inItems = [];
+}
+syncItemsPointer();
 lastScannedCode = "";
 clearBundleInputs();
 saveToStorage();
 updateTotals();
-renderTable();
-showMessage("Cleared all records.");
+renderActiveView();
+showMessage("Cleared all " + label + " records.");
+}
+
+function getExportRecordsAndTitle(){
+  if(activePalletTab === "lookup"){
+    const palletFilter = getValue("lookupPalletInput");
+    return {
+      title: palletFilter ? ("Pallet Tally Sheet - " + palletFilter) : "Full Inventory Tally Sheet (In + Out)",
+      records: getFilteredLookupRecords(),
+      includeType: true
+    };
+  }
+  const isOut = activePalletTab === "out";
+  return {
+    title: isOut ? "Out Pallet Report (Sold / Stock Out)" : "In Pallet Report (Bought / Stock In)",
+    records: getActiveItemsArray().map(it => Object.assign({}, it, { _dir: isOut ? "out" : "in" })),
+    includeType: false
+  };
 }
 
 function buildCSVContent(){
-const rows = [["Pallet", "Species", "Supplier", "Barcode", "Bundle No.", "Length (cm)", "Width (cm)", "Sheets", "Area (m²)"]];
-for(const it of items){
+const info = getExportRecordsAndTitle();
+const rows = [["Type", "Pallet", "Species", info.records.some(r => r._dir === "out") ? "Supplier / Customer" : "Supplier", "Barcode", "Bundle No.", "Length (cm)", "Width (cm)", "Sheets", "Area (m²)"]];
+for(const it of info.records){
   rows.push([
+    it._dir === "out" ? "OUT (Sold)" : "IN (Bought)",
     it.pallet || "",
     it.species || "",
     it.company || "",
@@ -1591,19 +2155,30 @@ return rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(
 }
 
 function buildSummaryText(){
-let totalArea = 0;
-for(const it of items) totalArea = roundArea(totalArea + (Number(it.area) || 0));
+const info = getExportRecordsAndTitle();
+let inArea = 0, outArea = 0, totalArea = 0;
+for(const it of info.records){
+  const a = Number(it.area) || 0;
+  totalArea = roundArea(totalArea + a);
+  if(it._dir === "out") outArea = roundArea(outArea + a);
+  else inArea = roundArea(inArea + a);
+}
 const lines = [
-  "VeneerTally Pro Report",
-  "Pallet: " + (getValue("palletNum") || "Pallet 01"),
-  "Supplier: " + (getValue("companyName") || "-"),
+  "VeneerTally Pro - " + info.title,
+  "Pallet: " + (activePalletTab === "lookup" ? (getValue("lookupPalletInput") || "All Pallets") : (getValue("palletNum") || "Pallet 01")),
+  "Partner: " + (getValue("companyName") || "-"),
   "Species: " + (getValue("veneerSpecie") || "-"),
-  "Total Bundles: " + items.length,
-  "Grand Total: " + totalArea.toFixed(2) + " m²",
-  "---"
+  "Total Bundles: " + info.records.length
 ];
-items.forEach((it, idx) => {
-  lines.push((idx + 1) + ". [" + it.pallet + "] " + it.barcode + (it.bundleNum ? " #" + it.bundleNum : "") + " - " + it.length + "x" + it.width + "x" + it.sheets + " = " + Number(it.area).toFixed(2) + " m²");
+if(activePalletTab === "lookup"){
+  lines.push("Scanned In: " + inArea.toFixed(2) + " m² | Scanned Out: " + outArea.toFixed(2) + " m² | Net Balance: " + roundArea(inArea - outArea).toFixed(2) + " m²");
+} else {
+  lines.push("Grand Total: " + totalArea.toFixed(2) + " m²");
+}
+lines.push("---");
+info.records.forEach((it, idx) => {
+  const tag = it._dir === "out" ? "[OUT] " : "[IN] ";
+  lines.push((idx + 1) + ". " + tag + "[" + it.pallet + "] " + it.barcode + (it.bundleNum ? " #" + it.bundleNum : "") + " - " + it.length + "x" + it.width + "x" + it.sheets + " = " + Number(it.area).toFixed(2) + " m²");
 });
 return lines.join("\n");
 }
@@ -1650,8 +2225,6 @@ showMessage("Report copied—paste into WhatsApp, Email, or Drive.");
 
 loadFromStorage();
 changeLanguage(currentLang);
-updateTotals();
-renderTable();
 </script>
 </body>
 </html>
