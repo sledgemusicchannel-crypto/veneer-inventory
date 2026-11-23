@@ -114,6 +114,19 @@ button{
 .btn-action{width:auto;padding:7px 10px;font-size:11px;margin:2px 0;min-height:30px}
 .meta-box{background:#293c44;padding:10px;border-radius:8px;margin-bottom:10px}
 .lookup-box{background:#1f3447;border:1px solid #3c6382;padding:12px;border-radius:8px;margin-bottom:10px}
+.chip-filter-wrap{
+  margin-top:8px;
+  padding-top:8px;
+  border-top:1px solid rgba(255,255,255,0.12);
+}
+.chip-filter-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  font-size:11px;
+  color:#c7dce8;
+  margin-bottom:5px;
+}
 .lookup-stats-grid{
   display:grid;
   grid-template-columns:repeat(3,1fr);
@@ -134,7 +147,9 @@ button{
   display:flex;
   flex-wrap:wrap;
   gap:5px;
-  margin-top:8px;
+  margin-top:6px;
+  max-height:140px;
+  overflow-y:auto;
 }
 .pallet-chip{
   width:auto;
@@ -293,7 +308,21 @@ th,td{border:1px solid #888}
     </div>
   </div>
 
-  <div id="savedPalletChips" class="pallet-chip-list"></div>
+  <div class="chip-filter-wrap">
+    <div class="chip-filter-header">
+      <span id="lblQuickChipSearch">⚡ Quick Jump Pallet Chips</span>
+      <span id="palletChipCount">0 pallets</span>
+    </div>
+    <div class="row" style="margin-top:2px">
+      <div class="col">
+        <input id="palletChipSearch" placeholder="🔍 Filter pallet chips (e.g. 01, 245, A-12)..." oninput="refreshKnownPalletsList()" autocomplete="off" style="padding:8px 10px;font-size:13px;background:#17232a;color:#ffffff;border-color:#53666e">
+      </div>
+      <div style="width:74px">
+        <button type="button" class="btn-scan" style="margin-top:0;min-height:36px;padding:6px 8px;font-size:12px" onclick="document.getElementById('palletChipSearch').value='';refreshKnownPalletsList()">✕</button>
+      </div>
+    </div>
+    <div id="savedPalletChips" class="pallet-chip-list"></div>
+  </div>
 
   <div class="lookup-stats-grid">
     <div class="lookup-stat-card">
@@ -447,7 +476,7 @@ oninput="renderActiveView()" style="background:#293c44;color:white;border-color:
 
 <div class="row no-print" id="palletManageRow">
 <div class="col"><button class="btn-scan" onclick="newPallet()">＋ <span id="lblNewPallet">New Pallet</span></button></div>
-<div class="col"><button class="btn-del" onclick="clearAll()"><span id="lblClearAll">Clear All Records</span></button></div>
+<div class="col"><button class="btn-del" onclick="clearAll()"><span id="lblClearAll">Clear Current Tab</span></button></div>
 </div>
 
 <div id="cameraFallbackModal" class="no-print">
@@ -658,6 +687,8 @@ const translations = {
     editBtn: "Edit",
     delBtn: "Del",
     lookupLabel: "Type or Select Scanned Pallet Number to View Full Tally Sheet",
+    quickChipSearch: "⚡ Quick Jump Pallet Chips",
+    chipSearchPlaceholder: "🔍 Filter pallet chips (e.g. 01, 245, A-12)...",
     statIn: "Scanned In",
     statOut: "Scanned Out",
     statNet: "Net Balance"
@@ -716,6 +747,8 @@ const translations = {
     editBtn: "Sửa",
     delBtn: "Xóa",
     lookupLabel: "Nhập hoặc chọn số Pallet đã quét để xem toàn bộ bảng kê",
+    quickChipSearch: "⚡ Lọc Nhanh Thẻ Pallet",
+    chipSearchPlaceholder: "🔍 Lọc thẻ pallet (vd. 01, 245, A-12)...",
     statIn: "Đã Nhập",
     statOut: "Đã Xuất",
     statNet: "Tồn Kho"
@@ -774,6 +807,8 @@ const translations = {
     editBtn: "编辑",
     delBtn: "删除",
     lookupLabel: "输入或选择已扫描卡板号以查看完整码单",
+    quickChipSearch: "⚡ 快速筛选卡板标签",
+    chipSearchPlaceholder: "🔍 筛选卡板标签 (如 01, 245, A-12)...",
     statIn: "已入库",
     statOut: "已出库",
     statNet: "当前结存"
@@ -832,6 +867,8 @@ const translations = {
     editBtn: "編集",
     delBtn: "削除",
     lookupLabel: "スキャン済みパレット番号を入力して集計表を表示",
+    quickChipSearch: "⚡ パレットチップ高速検索",
+    chipSearchPlaceholder: "🔍 パレットチップを絞り込み (例: 01, 245, A-12)...",
     statIn: "入庫合計",
     statOut: "出庫合計",
     statNet: "在庫残高"
@@ -890,6 +927,8 @@ const translations = {
     editBtn: "수정",
     delBtn: "삭제",
     lookupLabel: "스캔된 파레트 번호를 입력하여 전체 집계표 확인",
+    quickChipSearch: "⚡ 파레트 칩 빠른 검색",
+    chipSearchPlaceholder: "🔍 파레트 칩 검색 (예: 01, 245, A-12)...",
     statIn: "입고 합계",
     statOut: "출고 합계",
     statNet: "현재 잔고"
@@ -994,6 +1033,8 @@ function changeLanguage(lang){
   document.getElementById("lblWidth").textContent = t.width;
   document.getElementById("lblSheets").textContent = t.sheets;
   document.getElementById("lblLookupPallet").textContent = t.lookupLabel;
+  document.getElementById("lblQuickChipSearch").textContent = t.quickChipSearch;
+  document.getElementById("palletChipSearch").placeholder = t.chipSearchPlaceholder;
   document.getElementById("lblStatIn").textContent = t.statIn;
   document.getElementById("lblStatOut").textContent = t.statOut;
   document.getElementById("lblStatNet").textContent = t.statNet;
@@ -1285,7 +1326,6 @@ lastScannedCode = code;
 setValue("barcode", code);
 let parsed = parseVeneerBarcode(code);
 
-/* If scanning into Out Pallet and dimensions aren't encoded in barcode, auto-fill from matching In Pallet stock if available */
 if(parsed.length === null && activePalletTab === "out"){
   const inMatch = inItems.find(it => String(it.barcode || "").trim().toLowerCase() === code.toLowerCase());
   if(inMatch){
@@ -1717,7 +1757,6 @@ try{
     const parsedIn = JSON.parse(rawIn);
     if(Array.isArray(parsedIn)) inItems = parsedIn;
   } else {
-    /* Migrate legacy v13 records into In Pallet storage so zero data is lost */
     const legacyRaw = localStorage.getItem(LEGACY_STORAGE_KEY);
     if(legacyRaw){
       const parsedLegacy = JSON.parse(legacyRaw);
@@ -1821,14 +1860,23 @@ function refreshKnownPalletsList(){
 
   const dl = document.getElementById("knownPalletsList");
   const chips = document.getElementById("savedPalletChips");
+  const countEl = document.getElementById("palletChipCount");
   const currentQuery = getValue("lookupPalletInput").toLowerCase();
+  const chipFilter = getValue("palletChipSearch").toLowerCase();
   dl.innerHTML = "";
   chips.innerHTML = "";
 
+  let totalUnique = 0;
+  let shownChips = 0;
+
   map.forEach((counts, palletName) => {
+    totalUnique++;
     const opt = document.createElement("option");
     opt.value = palletName;
     dl.appendChild(opt);
+
+    if(chipFilter && !palletName.toLowerCase().includes(chipFilter)) return;
+    shownChips++;
 
     const btn = document.createElement("button");
     btn.type = "button";
@@ -1840,6 +1888,10 @@ function refreshKnownPalletsList(){
     };
     chips.appendChild(btn);
   });
+
+  if(countEl){
+    countEl.textContent = chipFilter ? (shownChips + " / " + totalUnique + " pallets") : (totalUnique + " pallets");
+  }
 }
 
 function getFilteredLookupRecords(){
