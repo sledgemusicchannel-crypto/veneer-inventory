@@ -867,9 +867,12 @@ function setWifiStatusMessage(msg, isError=false){
 function setWifiExportScope(scope){
   if(scope !== "in" && scope !== "out" && scope !== "all") scope = "in";
   wifiExportScope = scope;
-  document.getElementById("wifiScopeIn").classList.toggle("active", scope === "in");
-  document.getElementById("wifiScopeOut").classList.toggle("active", scope === "out");
-  document.getElementById("wifiScopeAll").classList.toggle("active", scope === "all");
+  const bIn = document.getElementById("wifiScopeIn");
+  const bOut = document.getElementById("wifiScopeOut");
+  const bAll = document.getElementById("wifiScopeAll");
+  if(bIn) bIn.classList.toggle("active", scope === "in");
+  if(bOut) bOut.classList.toggle("active", scope === "out");
+  if(bAll) bAll.classList.toggle("active", scope === "all");
   saveWifiSettings();
   const list = getWifiScopeRecords();
   setWifiStatusMessage("Selected " + scope.toUpperCase() + " packing list: " + list.length + " bundle(s) ready.");
@@ -950,11 +953,11 @@ async function testWifiConnection(){
     await fetch(baseUrl + "/", { mode: "no-cors", signal: controller.signal });
     clearTimeout(timer);
     playBeep(false);
-    setWifiStatusMessage("✅ Laptop reachable on Wi-Fi (" + baseUrl + "). Ready to transfer packing list!");
+    setWifiStatusMessage("Laptop reachable on Wi-Fi (" + baseUrl + "). Ready to transfer packing list!");
   }catch(err){
     clearTimeout(timer);
     playBeep(true);
-    setWifiStatusMessage("⚠️ Could not reach " + baseUrl + ". Verify phone & laptop are on the same Wi-Fi and port matches your laptop system.", true);
+    setWifiStatusMessage("Could not reach " + baseUrl + ". Check same Wi-Fi, port, or WebView HTTP cleartext access.", true);
   }
 }
 
@@ -964,7 +967,14 @@ function openLaptopSystemUrl(){
     setWifiStatusMessage("Enter your Laptop Wi-Fi IP Address first (e.g. 192.168.1.105).", true);
     return;
   }
-  window.open(baseUrl, "_blank");
+  try{
+    const win = window.open(baseUrl, "_blank");
+    if(!win){
+      window.location.href = baseUrl;
+    }
+  }catch(e){
+    window.location.href = baseUrl;
+  }
 }
 
 async function sendTallyOverWifi(){
@@ -993,15 +1003,14 @@ async function sendTallyOverWifi(){
     });
     if(res.ok){
       playBeep(false);
-      setWifiStatusMessage("✅ Sent " + records.length + " " + wifiExportScope.toUpperCase() + " bundle(s) to Laptop System (" + baseUrl + ")!");
+      setWifiStatusMessage("Sent " + records.length + " " + wifiExportScope.toUpperCase() + " bundle(s) to Laptop System (" + baseUrl + ")!");
       return;
     }
     throw new Error("HTTP " + res.status);
   }catch(err){
-    // Fallback: Download CSV + copy JSON so user can immediately import on laptop
     playBeep(true);
-    setWifiStatusMessage("⚠️ Direct API push blocked (" + (err.message || "CORS/HTTPS") + "). Downloading CSV packing list & opening laptop URL...", true);
-    downloadWifiPackingListCSV(true);
+    setWifiStatusMessage("Direct Wi-Fi push blocked (" + (err.message || "network/mixed-content") + "). Downloading CSV packing list...", true);
+    downloadWifiPackingListCSV(false);
   }
 }
 
@@ -1016,23 +1025,33 @@ function downloadWifiPackingListCSV(openLaptopAfter){
   const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g, "-");
   const filename = "VeneerTally_" + wifiExportScope.toUpperCase() + "_PackingList_" + stamp + ".csv";
 
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  try{
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 2500);
+  }catch(e){
+    const dataUrl = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
+    const a = document.createElement("a");
+    a.href = dataUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
 
   playBeep(false);
   const baseUrl = buildLaptopBaseUrl();
-  setWifiStatusMessage("✅ Downloaded " + filename + " (" + records.length + " bundles)." + (baseUrl ? " Laptop IP: " + baseUrl : ""));
+  setWifiStatusMessage("Downloaded " + filename + " (" + records.length + " bundles)." + (baseUrl ? " Laptop IP: " + baseUrl : ""));
 
   if(openLaptopAfter && baseUrl){
     setTimeout(() => {
-      window.open(baseUrl, "_blank");
+      openLaptopSystemUrl();
     }, 500);
   }
 }
@@ -1048,7 +1067,7 @@ function copyWifiJsonPayload(){
   if(navigator.clipboard && navigator.clipboard.writeText){
     navigator.clipboard.writeText(csv).then(() => {
       playBeep(false);
-      setWifiStatusMessage("✅ Copied " + records.length + " " + wifiExportScope.toUpperCase() + " packing list rows to clipboard!");
+      setWifiStatusMessage("Copied " + records.length + " " + wifiExportScope.toUpperCase() + " packing list rows to clipboard!");
     }).catch(() => {
       setWifiStatusMessage("Clipboard blocked—use Download Packing List (.CSV) instead.", true);
     });
@@ -1749,7 +1768,7 @@ if(repeated){
     setTimeout(() => guide.classList.remove("repeat-warn"), 1500);
   }
   playRepeatBeep();
-  showMessage("⚠️ DUPLICATE / REPEAT BARCODE DETECTED IN " + tabLabel + ": " + code + " was already scanned!", true);
+  showMessage("DUPLICATE / REPEAT BARCODE DETECTED IN " + tabLabel + ": " + code + " was already scanned!", true);
   lastScannedCode = code;
   return;
 }
