@@ -57,6 +57,78 @@ select.mode-dropdown{
 select.mode-dropdown.out-active{border-color:#d97725;background:#3a2818}
 select.mode-dropdown.lookup-active{border-color:#2980b9;background:#1a3042}
 
+/* Wi-Fi LAN Connector Strip */
+.wifi-bar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  background:#1c2e38;
+  border:1px solid #3a6073;
+  border-radius:8px;
+  padding:7px 10px;
+  margin-bottom:8px;
+}
+.wifi-bar-info{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  min-width:0;
+  font-size:12px;
+  color:#d6eaf8;
+}
+.wifi-dot{
+  width:9px;
+  height:9px;
+  border-radius:50%;
+  background:#95a5a6;
+  flex-shrink:0;
+}
+.wifi-dot.connected{
+  background:#2ecc71;
+  box-shadow:0 0 8px #2ecc71;
+}
+.wifi-ip-label{
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  font-family:monospace;
+  font-size:12px;
+  color:#85c1e9;
+}
+.btn-wifi{
+  width:auto;
+  min-height:32px;
+  margin-top:0;
+  padding:5px 11px;
+  font-size:12px;
+  background:#1f618d;
+  color:#ffffff;
+  border:1px solid #5dade2;
+  border-radius:6px;
+  flex-shrink:0;
+}
+.wifi-scope-tabs{
+  display:flex;
+  gap:6px;
+  margin:8px 0;
+}
+.wifi-scope-btn{
+  flex:1;
+  min-height:34px;
+  margin-top:0;
+  padding:6px 4px;
+  font-size:11px;
+  background:#17232a;
+  color:#b9c7cb;
+  border:1px solid #486575;
+}
+.wifi-scope-btn.active{
+  background:#1f618d;
+  color:#ffffff;
+  border-color:#5dade2;
+}
+
 .mode-badge{
   display:inline-block;
   padding:3px 10px;
@@ -182,8 +254,8 @@ th{background:#254b3b;color:white}
 tfoot tr{background:#dff4e7;font-weight:bold}
 small{color:#596970}
 #cameraPanel video{display:block}
-#exportModal,#cameraFallbackModal{display:none;background:rgba(0,0,0,.92);position:fixed;inset:0;width:100%;height:100%;padding:20px 15px;overflow-y:auto;z-index:1000;text-align:center}
-.modal-content{max-width:500px;margin:30px auto;background:#293c44;padding:16px;border-radius:10px;border:1px solid #53666e;text-align:left}
+#exportModal,#cameraFallbackModal,#wifiSyncModal{display:none;background:rgba(0,0,0,.92);position:fixed;inset:0;width:100%;height:100%;padding:20px 15px;overflow-y:auto;z-index:1000;text-align:center}
+.modal-content{max-width:500px;margin:20px auto;background:#293c44;padding:16px;border-radius:10px;border:1px solid #53666e;text-align:left}
 .footer-note{text-align:center;color:#b9c7cb;font-size:11px;margin:16px 0 8px 0}
 
 /* Urovo-Style Laser Viewport */
@@ -264,6 +336,18 @@ th,td{border:1px solid #888}
     <option value="ja">日本語</option>
     <option value="ko">한국어</option>
   </select>
+</div>
+
+<!-- WI-FI LAN CONNECTOR BAR -->
+<div class="wifi-bar no-print">
+  <div class="wifi-bar-info">
+    <span id="wifiStatusDot" class="wifi-dot"></span>
+    <span id="lblWifiBarTitle" style="font-weight:bold;white-space:nowrap">Wi-Fi LAN:</span>
+    <span id="wifiStatusText" class="wifi-ip-label">Not configured</span>
+  </div>
+  <button type="button" class="btn-wifi" onclick="openWifiSyncModal()">
+    📡 <span id="lblWifiConnectBtn">Wi-Fi Packing List</span>
+  </button>
 </div>
 
 <h2 id="lblMainHeader">🌿 VeneerTally Pro</h2>
@@ -479,6 +563,76 @@ oninput="renderActiveView()" style="background:#293c44;color:white;border-color:
 <div class="col"><button class="btn-del" onclick="clearAll()"><span id="lblClearAll">Clear Current Tab</span></button></div>
 </div>
 
+<!-- WI-FI LAN CONNECTOR & PACKING LIST DOWNLOAD MODAL -->
+<div id="wifiSyncModal" class="no-print">
+<div class="modal-content">
+<h3 id="lblWifiModalTitle" style="color:#5dade2;margin-top:0;margin-bottom:4px">📡 Wi-Fi LAN Inventory Connector</h3>
+<p id="lblWifiModalSub" style="font-size:12px;color:#d6eaf8;margin-top:0;line-height:1.4">
+Connect your phone and laptop on the same Wi-Fi IP to send or download In/Out Packing Lists directly into your Veneer Inventory Management System.
+</p>
+
+<div class="row">
+  <div class="col form-group">
+    <label for="wifiLaptopIp" id="lblWifiIp">Laptop Wi-Fi IP Address</label>
+    <input id="wifiLaptopIp" placeholder="e.g. 192.168.1.105" oninput="saveWifiSettings()">
+  </div>
+  <div class="form-group" style="width:105px">
+    <label for="wifiLaptopPort" id="lblWifiPort">Port</label>
+    <input id="wifiLaptopPort" placeholder="e.g. 8080" oninput="saveWifiSettings()">
+  </div>
+</div>
+
+<div class="form-group">
+  <label for="wifiEndpointPath" id="lblWifiEndpoint">System Import Endpoint (Optional API Path)</label>
+  <input id="wifiEndpointPath" value="/api/tally/import" placeholder="/api/tally/import" oninput="saveWifiSettings()">
+</div>
+
+<div class="row" style="margin-bottom:8px">
+  <div class="col">
+    <button type="button" class="btn-scan" style="margin-top:0;min-height:38px;background:#1f618d" onclick="testWifiConnection()">
+      🔌 <span id="lblWifiTestBtn">Test Wi-Fi Connection</span>
+    </button>
+  </div>
+  <div class="col">
+    <button type="button" class="btn-add" style="margin-top:0;min-height:38px;background:#2874a6" onclick="openLaptopSystemUrl()">
+      🖥️ <span id="lblWifiOpenLaptopBtn">Open Laptop System</span>
+    </button>
+  </div>
+</div>
+
+<label id="lblWifiScope" style="margin-top:4px">Select Packing List to Download / Send:</label>
+<div class="wifi-scope-tabs">
+  <button type="button" id="wifiScopeIn" class="wifi-scope-btn active" onclick="setWifiExportScope('in')">📥 In Tally Sheet</button>
+  <button type="button" id="wifiScopeOut" class="wifi-scope-btn" onclick="setWifiExportScope('out')">📤 Out Tally Sheet</button>
+  <button type="button" id="wifiScopeAll" class="wifi-scope-btn" onclick="setWifiExportScope('all')">📋 All (In + Out)</button>
+</div>
+
+<div id="wifiSyncStatusBox" style="background:#17232a;border:1px solid #486575;border-radius:6px;padding:8px;font-size:11px;color:#85c1e9;margin-bottom:8px;word-break:break-all">
+  Ready. Enter your laptop's Wi-Fi IP address above.
+</div>
+
+<button type="button" class="btn-add" style="background:#218c52" onclick="sendTallyOverWifi()">
+  🚀 <span id="lblWifiSendNowBtn">SEND IN/OUT TALLY TO LAPTOP SYSTEM (WI-FI)</span>
+</button>
+
+<button type="button" class="btn-add" style="margin-top:8px;background:#1f618d" onclick="downloadWifiPackingListCSV(false)">
+  📥 <span id="lblWifiDownloadCsvBtn">DOWNLOAD PACKING LIST (.CSV FILE)</span>
+</button>
+
+<button type="button" class="btn-out" style="margin-top:8px" onclick="downloadWifiPackingListCSV(true)">
+  ⚡ <span id="lblWifiDownloadAndOpenBtn">DOWNLOAD CSV &amp; OPEN LAPTOP SYSTEM</span>
+</button>
+
+<button type="button" class="btn-scan" style="margin-top:8px;background:#34495e" onclick="copyWifiJsonPayload()">
+  📋 <span id="lblWifiCopyJsonBtn">COPY WI-FI JSON / CSV PACKING DATA</span>
+</button>
+
+<button type="button" class="btn-del" style="margin-top:12px" onclick="closeWifiSyncModal()">
+  ✕ <span id="lblWifiCloseBtn">Close Wi-Fi Connector</span>
+</button>
+</div>
+</div>
+
 <div id="cameraFallbackModal" class="no-print">
 <div class="modal-content">
 <h3 style="color:#81c784;margin-top:0;margin-bottom:6px">Browser Camera &amp; Home Screen Install</h3>
@@ -543,6 +697,7 @@ const LEGACY_STORAGE_KEY="veneerTallyPro_records_v13";
 const STORAGE_KEY_IN="veneerTallyPro_records_in_v14";
 const STORAGE_KEY_OUT="veneerTallyPro_records_out_v14";
 const SETTINGS_KEY="veneerTallyPro_settings_v14";
+const WIFI_SETTINGS_KEY="veneerTallyPro_wifi_v1";
 const PWA_FALLBACK_URL="https://veneertally-pro.netlify.app";
 const CAMERA_LAUNCH_FALLBACK_MSG="Opening https://veneertally-pro.netlify.app in their mobile browser (such as Chrome on Android or Safari on iPhone) and saving it to their Home Screen (Add to Home screen / Install app) for browser-based camera access.";
 
@@ -554,6 +709,7 @@ let editingBarcode=null;
 let editingDirection=null;
 let currentLang="en";
 let deferredInstallPrompt=null;
+let wifiExportScope="in";
 
 function getActiveItemsArray(){
   return activePalletTab === "out" ? outItems : inItems;
@@ -632,6 +788,275 @@ async function triggerPwaInstall(){
   setFallbackActionNote("Installed apps cannot trigger Home Screen install directly. Open https://veneertally-pro.netlify.app in Chrome (Android) or Safari (iPhone) and choose Add to Home screen / Install app.");
 }
 
+/* =========================================================
+   WI-FI LAN CONNECTOR & IN/OUT PACKING LIST TRANSFER
+   ========================================================= */
+function buildLaptopBaseUrl(){
+  let rawIp = getValue("wifiLaptopIp");
+  let rawPort = getValue("wifiLaptopPort");
+  if(!rawIp){
+    const host = window.location.hostname;
+    if(host && host !== "localhost" && !host.includes("netlify")){
+      rawIp = host;
+    }
+  }
+  if(!rawIp) return "";
+  let clean = rawIp.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+  if(clean.includes(":")){
+    return "http://" + clean;
+  }
+  return "http://" + clean + (rawPort ? (":" + rawPort.replace(/[^0-9]/g, "")) : "");
+}
+
+function updateWifiStatusBar(){
+  const baseUrl = buildLaptopBaseUrl();
+  const dot = document.getElementById("wifiStatusDot");
+  const txt = document.getElementById("wifiStatusText");
+  if(!dot || !txt) return;
+  if(baseUrl){
+    dot.classList.add("connected");
+    txt.textContent = baseUrl.replace(/^https?:\/\//i, "");
+  } else {
+    dot.classList.remove("connected");
+    txt.textContent = "Not configured";
+  }
+}
+
+function saveWifiSettings(){
+  try{
+    localStorage.setItem(WIFI_SETTINGS_KEY, JSON.stringify({
+      ip: getValue("wifiLaptopIp"),
+      port: getValue("wifiLaptopPort"),
+      endpoint: getValue("wifiEndpointPath") || "/api/tally/import",
+      scope: wifiExportScope
+    }));
+  }catch(e){}
+  updateWifiStatusBar();
+}
+
+function loadWifiSettings(){
+  try{
+    const raw = localStorage.getItem(WIFI_SETTINGS_KEY);
+    if(raw){
+      const cfg = JSON.parse(raw);
+      if(cfg.ip) setValue("wifiLaptopIp", cfg.ip);
+      if(cfg.port) setValue("wifiLaptopPort", cfg.port);
+      if(cfg.endpoint) setValue("wifiEndpointPath", cfg.endpoint);
+      if(cfg.scope) wifiExportScope = cfg.scope;
+    } else {
+      const host = window.location.hostname;
+      if(host && /^\d{1,3}(\.\d{1,3}){3}$/.test(host)){
+        setValue("wifiLaptopIp", host);
+        if(window.location.port) setValue("wifiLaptopPort", window.location.port);
+      }
+    }
+  }catch(e){}
+  updateWifiStatusBar();
+}
+
+function setWifiStatusMessage(msg, isError=false){
+  const box = document.getElementById("wifiSyncStatusBox");
+  if(box){
+    box.textContent = msg;
+    box.style.color = isError ? "#ff8a80" : "#85c1e9";
+    box.style.borderColor = isError ? "#c0392b" : "#486575";
+  }
+  showMessage(msg, isError);
+}
+
+function setWifiExportScope(scope){
+  if(scope !== "in" && scope !== "out" && scope !== "all") scope = "in";
+  wifiExportScope = scope;
+  document.getElementById("wifiScopeIn").classList.toggle("active", scope === "in");
+  document.getElementById("wifiScopeOut").classList.toggle("active", scope === "out");
+  document.getElementById("wifiScopeAll").classList.toggle("active", scope === "all");
+  saveWifiSettings();
+  const list = getWifiScopeRecords();
+  setWifiStatusMessage("Selected " + scope.toUpperCase() + " packing list: " + list.length + " bundle(s) ready.");
+}
+
+function openWifiSyncModal(){
+  if(activePalletTab === "in" || activePalletTab === "out"){
+    wifiExportScope = activePalletTab;
+  } else {
+    wifiExportScope = "all";
+  }
+  setWifiExportScope(wifiExportScope);
+  updateWifiStatusBar();
+  document.getElementById("wifiSyncModal").style.display = "block";
+}
+
+function closeWifiSyncModal(){
+  document.getElementById("wifiSyncModal").style.display = "none";
+}
+
+function getWifiScopeRecords(){
+  if(wifiExportScope === "in"){
+    return inItems.map(it => Object.assign({}, it, { direction: "IN" }));
+  }
+  if(wifiExportScope === "out"){
+    return outItems.map(it => Object.assign({}, it, { direction: "OUT" }));
+  }
+  return inItems.map(it => Object.assign({}, it, { direction: "IN" }))
+    .concat(outItems.map(it => Object.assign({}, it, { direction: "OUT" })));
+}
+
+function buildWifiCSVString(records){
+  const rows = [["Movement", "Pallet", "Species", "Supplier / Customer", "Barcode", "Bundle No.", "Length (cm)", "Width (cm)", "Sheets", "Area (m2)"]];
+  for(const it of records){
+    rows.push([
+      it.direction || "IN",
+      it.pallet || "",
+      it.species || "",
+      it.company || "",
+      it.barcode || "",
+      it.bundleNum || "",
+      it.length ?? "",
+      it.width ?? "",
+      it.sheets ?? "",
+      Number(it.area || 0).toFixed(2)
+    ]);
+  }
+  return rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(",")).join("\n");
+}
+
+function buildWifiJsonPayload(){
+  const records = getWifiScopeRecords();
+  let totalM2 = 0;
+  for(const r of records) totalM2 = roundArea(totalM2 + (Number(r.area) || 0));
+  return {
+    source: "VeneerTally Pro",
+    exportedAt: new Date().toISOString(),
+    movementType: wifiExportScope.toUpperCase(),
+    pallet: getValue("palletNum") || "Pallet 01",
+    partner: getValue("companyName") || "",
+    species: getValue("veneerSpecie") || "",
+    totalBundles: records.length,
+    totalAreaM2: totalM2,
+    items: records
+  };
+}
+
+async function testWifiConnection(){
+  const baseUrl = buildLaptopBaseUrl();
+  if(!baseUrl){
+    setWifiStatusMessage("Enter your Laptop Wi-Fi IP Address first (e.g. 192.168.1.105).", true);
+    return;
+  }
+  setWifiStatusMessage("Testing Wi-Fi connection to " + baseUrl + " ...");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 3500);
+  try{
+    await fetch(baseUrl + "/", { mode: "no-cors", signal: controller.signal });
+    clearTimeout(timer);
+    playBeep(false);
+    setWifiStatusMessage("✅ Laptop reachable on Wi-Fi (" + baseUrl + "). Ready to transfer packing list!");
+  }catch(err){
+    clearTimeout(timer);
+    playBeep(true);
+    setWifiStatusMessage("⚠️ Could not reach " + baseUrl + ". Verify phone & laptop are on the same Wi-Fi and port matches your laptop system.", true);
+  }
+}
+
+function openLaptopSystemUrl(){
+  const baseUrl = buildLaptopBaseUrl();
+  if(!baseUrl){
+    setWifiStatusMessage("Enter your Laptop Wi-Fi IP Address first (e.g. 192.168.1.105).", true);
+    return;
+  }
+  window.open(baseUrl, "_blank");
+}
+
+async function sendTallyOverWifi(){
+  const baseUrl = buildLaptopBaseUrl();
+  if(!baseUrl){
+    setWifiStatusMessage("Enter your Laptop Wi-Fi IP Address first (e.g. 192.168.1.105).", true);
+    return;
+  }
+  const records = getWifiScopeRecords();
+  if(records.length === 0){
+    playBeep(true);
+    setWifiStatusMessage("No scanned bundles in " + wifiExportScope.toUpperCase() + " tally sheet to send.", true);
+    return;
+  }
+  let ep = getValue("wifiEndpointPath") || "/api/tally/import";
+  if(!ep.startsWith("/")) ep = "/" + ep;
+  const targetUrl = baseUrl + ep;
+  const payload = buildWifiJsonPayload();
+
+  setWifiStatusMessage("Sending " + records.length + " bundle(s) via Wi-Fi to " + targetUrl + " ...");
+  try{
+    const res = await fetch(targetUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if(res.ok){
+      playBeep(false);
+      setWifiStatusMessage("✅ Sent " + records.length + " " + wifiExportScope.toUpperCase() + " bundle(s) to Laptop System (" + baseUrl + ")!");
+      return;
+    }
+    throw new Error("HTTP " + res.status);
+  }catch(err){
+    // Fallback: Download CSV + copy JSON so user can immediately import on laptop
+    playBeep(true);
+    setWifiStatusMessage("⚠️ Direct API push blocked (" + (err.message || "CORS/HTTPS") + "). Downloading CSV packing list & opening laptop URL...", true);
+    downloadWifiPackingListCSV(true);
+  }
+}
+
+function downloadWifiPackingListCSV(openLaptopAfter){
+  const records = getWifiScopeRecords();
+  if(records.length === 0){
+    playBeep(true);
+    setWifiStatusMessage("No scanned bundles in " + wifiExportScope.toUpperCase() + " packing list to download.", true);
+    return;
+  }
+  const csv = "\uFEFF" + buildWifiCSVString(records);
+  const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g, "-");
+  const filename = "VeneerTally_" + wifiExportScope.toUpperCase() + "_PackingList_" + stamp + ".csv";
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+  playBeep(false);
+  const baseUrl = buildLaptopBaseUrl();
+  setWifiStatusMessage("✅ Downloaded " + filename + " (" + records.length + " bundles)." + (baseUrl ? " Laptop IP: " + baseUrl : ""));
+
+  if(openLaptopAfter && baseUrl){
+    setTimeout(() => {
+      window.open(baseUrl, "_blank");
+    }, 500);
+  }
+}
+
+function copyWifiJsonPayload(){
+  const records = getWifiScopeRecords();
+  if(records.length === 0){
+    playBeep(true);
+    setWifiStatusMessage("No records in " + wifiExportScope.toUpperCase() + " packing list to copy.", true);
+    return;
+  }
+  const csv = buildWifiCSVString(records);
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(csv).then(() => {
+      playBeep(false);
+      setWifiStatusMessage("✅ Copied " + records.length + " " + wifiExportScope.toUpperCase() + " packing list rows to clipboard!");
+    }).catch(() => {
+      setWifiStatusMessage("Clipboard blocked—use Download Packing List (.CSV) instead.", true);
+    });
+  } else {
+    setWifiStatusMessage("Use Download Packing List (.CSV) button above.", true);
+  }
+}
+
 const translations = {
   en: {
     appTitle: "VeneerTally Pro",
@@ -691,7 +1116,9 @@ const translations = {
     chipSearchPlaceholder: "🔍 Filter pallet chips (e.g. 01, 245, A-12)...",
     statIn: "Scanned In",
     statOut: "Scanned Out",
-    statNet: "Net Balance"
+    statNet: "Net Balance",
+    wifiBarTitle: "Wi-Fi LAN:",
+    wifiConnectBtn: "Wi-Fi Packing List"
   },
   vi: {
     appTitle: "VeneerTally Pro",
@@ -751,7 +1178,9 @@ const translations = {
     chipSearchPlaceholder: "🔍 Lọc thẻ pallet (vd. 01, 245, A-12)...",
     statIn: "Đã Nhập",
     statOut: "Đã Xuất",
-    statNet: "Tồn Kho"
+    statNet: "Tồn Kho",
+    wifiBarTitle: "Wi-Fi LAN:",
+    wifiConnectBtn: "Tải Packing List Wi-Fi"
   },
   zh: {
     appTitle: "VeneerTally Pro",
@@ -811,7 +1240,9 @@ const translations = {
     chipSearchPlaceholder: "🔍 筛选卡板标签 (如 01, 245, A-12)...",
     statIn: "已入库",
     statOut: "已出库",
-    statNet: "当前结存"
+    statNet: "当前结存",
+    wifiBarTitle: "Wi-Fi局域网:",
+    wifiConnectBtn: "Wi-Fi下载码单"
   },
   ja: {
     appTitle: "VeneerTally Pro",
@@ -871,7 +1302,9 @@ const translations = {
     chipSearchPlaceholder: "🔍 パレットチップを絞り込み (例: 01, 245, A-12)...",
     statIn: "入庫合計",
     statOut: "出庫合計",
-    statNet: "在庫残高"
+    statNet: "在庫残高",
+    wifiBarTitle: "Wi-Fi LAN:",
+    wifiConnectBtn: "Wi-Fiパッキングリスト"
   },
   ko: {
     appTitle: "VeneerTally Pro",
@@ -931,7 +1364,9 @@ const translations = {
     chipSearchPlaceholder: "🔍 파레트 칩 검색 (예: 01, 245, A-12)...",
     statIn: "입고 합계",
     statOut: "출고 합계",
-    statNet: "현재 잔고"
+    statNet: "현재 잔고",
+    wifiBarTitle: "Wi-Fi LAN:",
+    wifiConnectBtn: "Wi-Fi 패킹리스트"
   }
 };
 
@@ -1009,6 +1444,8 @@ function changeLanguage(lang){
   const t = translations[lang];
   document.getElementById("appTitle").textContent = t.appTitle;
   document.getElementById("lblMainHeader").textContent = t.mainHeader;
+  document.getElementById("lblWifiBarTitle").textContent = t.wifiBarTitle;
+  document.getElementById("lblWifiConnectBtn").textContent = t.wifiConnectBtn;
 
   const tabSel = document.getElementById("palletTabSelect");
   tabSel.options[0].text = t.tabInOption;
@@ -2276,6 +2713,7 @@ showMessage("Report copied—paste into WhatsApp, Email, or Drive.");
 }
 
 loadFromStorage();
+loadWifiSettings();
 changeLanguage(currentLang);
 </script>
 </body>
