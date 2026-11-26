@@ -697,7 +697,7 @@ const LEGACY_STORAGE_KEY="veneerTallyPro_records_v13";
 const STORAGE_KEY_IN="veneerTallyPro_records_in_v14";
 const STORAGE_KEY_OUT="veneerTallyPro_records_out_v14";
 const SETTINGS_KEY="veneerTallyPro_settings_v14";
-const WIFI_SETTINGS_KEY="veneerTallyPro_wifi_v1";
+const WIFI_SETTINGS_KEY="veneerTallyPro_wifi_v2";
 const PWA_FALLBACK_URL="https://veneertally-pro.netlify.app";
 const CAMERA_LAUNCH_FALLBACK_MSG="Opening https://veneertally-pro.netlify.app in their mobile browser (such as Chrome on Android or Safari on iPhone) and saving it to their Home Screen (Add to Home screen / Install app) for browser-based camera access.";
 
@@ -792,14 +792,8 @@ async function triggerPwaInstall(){
    WI-FI LAN CONNECTOR & IN/OUT PACKING LIST TRANSFER
    ========================================================= */
 function buildLaptopBaseUrl(){
-  let rawIp = getValue("wifiLaptopIp");
-  let rawPort = getValue("wifiLaptopPort");
-  if(!rawIp){
-    const host = window.location.hostname;
-    if(host && host !== "localhost" && !host.includes("netlify")){
-      rawIp = host;
-    }
-  }
+  const rawIp = getValue("wifiLaptopIp");
+  const rawPort = getValue("wifiLaptopPort");
   if(!rawIp) return "";
   let clean = rawIp.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
   if(clean.includes(":")){
@@ -843,12 +837,6 @@ function loadWifiSettings(){
       if(cfg.port) setValue("wifiLaptopPort", cfg.port);
       if(cfg.endpoint) setValue("wifiEndpointPath", cfg.endpoint);
       if(cfg.scope) wifiExportScope = cfg.scope;
-    } else {
-      const host = window.location.hostname;
-      if(host && /^\d{1,3}(\.\d{1,3}){3}$/.test(host)){
-        setValue("wifiLaptopIp", host);
-        if(window.location.port) setValue("wifiLaptopPort", window.location.port);
-      }
     }
   }catch(e){}
   updateWifiStatusBar();
@@ -953,11 +941,11 @@ async function testWifiConnection(){
     await fetch(baseUrl + "/", { mode: "no-cors", signal: controller.signal });
     clearTimeout(timer);
     playBeep(false);
-    setWifiStatusMessage("Laptop reachable on Wi-Fi (" + baseUrl + "). Ready to transfer packing list!");
+    setWifiStatusMessage("Laptop reachable on Wi-Fi (" + baseUrl + "). Ready to transfer packing list.");
   }catch(err){
     clearTimeout(timer);
     playBeep(true);
-    setWifiStatusMessage("Could not reach " + baseUrl + ". Check same Wi-Fi, port, or WebView HTTP cleartext access.", true);
+    setWifiStatusMessage("Could not reach " + baseUrl + ". Confirm same Wi-Fi subnet, port, and WebView local HTTP permission.", true);
   }
 }
 
@@ -967,13 +955,11 @@ function openLaptopSystemUrl(){
     setWifiStatusMessage("Enter your Laptop Wi-Fi IP Address first (e.g. 192.168.1.105).", true);
     return;
   }
+  setWifiStatusMessage("Opening " + baseUrl + " ...");
   try{
-    const win = window.open(baseUrl, "_blank");
-    if(!win){
-      window.location.href = baseUrl;
-    }
-  }catch(e){
     window.location.href = baseUrl;
+  }catch(e){
+    setWifiStatusMessage("Open " + baseUrl + " in your browser.", true);
   }
 }
 
@@ -1003,13 +989,13 @@ async function sendTallyOverWifi(){
     });
     if(res.ok){
       playBeep(false);
-      setWifiStatusMessage("Sent " + records.length + " " + wifiExportScope.toUpperCase() + " bundle(s) to Laptop System (" + baseUrl + ")!");
+      setWifiStatusMessage("Sent " + records.length + " " + wifiExportScope.toUpperCase() + " bundle(s) to Laptop System (" + baseUrl + ").");
       return;
     }
     throw new Error("HTTP " + res.status);
   }catch(err){
     playBeep(true);
-    setWifiStatusMessage("Direct Wi-Fi push blocked (" + (err.message || "network/mixed-content") + "). Downloading CSV packing list...", true);
+    setWifiStatusMessage("Direct Wi-Fi push failed (" + (err.message || "WebView/network") + "). Downloading CSV packing list instead...", true);
     downloadWifiPackingListCSV(false);
   }
 }
@@ -1021,9 +1007,11 @@ function downloadWifiPackingListCSV(openLaptopAfter){
     setWifiStatusMessage("No scanned bundles in " + wifiExportScope.toUpperCase() + " packing list to download.", true);
     return;
   }
-  const csv = "\uFEFF" + buildWifiCSVString(records);
+  const plainCsv = buildWifiCSVString(records);
+  const csv = "\uFEFF" + plainCsv;
   const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g, "-");
   const filename = "VeneerTally_" + wifiExportScope.toUpperCase() + "_PackingList_" + stamp + ".csv";
+  let downloaded = false;
 
   try{
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -1035,19 +1023,31 @@ function downloadWifiPackingListCSV(openLaptopAfter){
     a.click();
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 2500);
+    downloaded = true;
   }catch(e){
-    const dataUrl = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
-    const a = document.createElement("a");
-    a.href = dataUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    try{
+      const dataUrl = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      downloaded = true;
+    }catch(e2){
+      downloaded = false;
+    }
+  }
+
+  if(!downloaded && navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(plainCsv).catch(function(){});
+    setWifiStatusMessage("App download blocked—copied " + records.length + " CSV rows to clipboard.", true);
+    return;
   }
 
   playBeep(false);
   const baseUrl = buildLaptopBaseUrl();
-  setWifiStatusMessage("Downloaded " + filename + " (" + records.length + " bundles)." + (baseUrl ? " Laptop IP: " + baseUrl : ""));
+  setWifiStatusMessage("Downloaded " + filename + " (" + records.length + " bundles)." + (baseUrl ? " Laptop: " + baseUrl : ""));
 
   if(openLaptopAfter && baseUrl){
     setTimeout(() => {
@@ -1067,7 +1067,7 @@ function copyWifiJsonPayload(){
   if(navigator.clipboard && navigator.clipboard.writeText){
     navigator.clipboard.writeText(csv).then(() => {
       playBeep(false);
-      setWifiStatusMessage("Copied " + records.length + " " + wifiExportScope.toUpperCase() + " packing list rows to clipboard!");
+      setWifiStatusMessage("Copied " + records.length + " " + wifiExportScope.toUpperCase() + " packing list rows to clipboard.");
     }).catch(() => {
       setWifiStatusMessage("Clipboard blocked—use Download Packing List (.CSV) instead.", true);
     });
